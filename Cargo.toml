@@ -1,0 +1,7 @@
+[workspace]
+resolver = "3"
+members = ["crates/wicket-core", "crates/wicket-util"]
+
+[workspace.dependencies]
+wicket-core= { version = "0.1.0", path = "crates/wicket-core", default-features = false }
+wicket-util= { version = "0.1.0", path = "crates/wicket-util", default-features = false }

@@ -1,0 +1,9 @@
+[package]
+name = "wicket-core-tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+[dev-dependencies]
+wicket-core = { workspace = true, default-features = true }
+
