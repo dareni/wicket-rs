@@ -110,7 +110,6 @@ impl FullyBufferedReader {
     }
 
     // Counts lines starting where we last left off up to the index provided.
-    // @param end End index.
     pub fn count_lines_to(&mut self, end: usize) {
         let input_slice = &self.input[self.last_line_count_index..end];
         let sl = input_slice.bytes();
@@ -151,22 +150,16 @@ impl FullyBufferedReader {
     }
 
     // Find the string starting at the position provided.
-    // @param strg The string to search for.
-    // @param start_pos The index to start the search.
-    // @return -1 if not found.
     pub fn find_str_at(&self, strg: &str, start_pos: usize) -> Option<usize> {
         self.input[start_pos..].find(strg).map(|i| i + start_pos)
     }
 
     // Find a char starting at the position provided. The char must not be
     // inside a quoted string.  (single or double)
-    // @param ch The char to search for.
-    // @param startPos The index to start at.
     // @param quotationChar The current quotation char. Must be ' or ",
     // otherwise will be ignored.
-    // @return -1 if not found
     pub fn find_out_of_quotes(
-        &self,
+        &mut self,
         ch: char,
         start_pos: usize,
         quotation_char: Option<char>,
@@ -179,6 +172,7 @@ impl FullyBufferedReader {
             if current_quotation_char.is_none() {
                 if current_char == '\'' || current_char == '\"' {
                     current_quotation_char = Some(current_char);
+                    self.count_lines_to(start_pos + i);
                 }
             } else {
                 let previous_char = if i > 0 {
@@ -199,7 +193,11 @@ impl FullyBufferedReader {
 
         if current_quotation_char.is_some() {
             return Err(ParseException {
-                message: "Opening/closing quote not found".to_string(),
+                message: format!(
+                    "Opening/closing quote not found for quote at (line {}, column {})",
+                    self.get_line_number(),
+                    self.get_column_number()
+                ),
                 position: start_pos,
             });
         }
@@ -249,11 +247,71 @@ mod test {
     fn nested_quotes() {
         // test_tag is <a href='b \'" > a' theAtr="at'r'\"r">
         let test_tag = "<a href='b \\'\" > a' theAtr=\"at'r'\\\"r\">";
-        let fully_buffered_reader = FullyBufferedReader::new_from_string(test_tag.to_string());
+        let mut fully_buffered_reader = FullyBufferedReader::new_from_string(test_tag.to_string());
         let position = fully_buffered_reader
             .find_out_of_quotes('>', 0, None)
             .unwrap();
-        println!("> is at {}", position.unwrap());
         assert_eq!('>', test_tag.as_bytes()[position.unwrap()] as char);
+        assert_eq!(test_tag.len(), position.unwrap() + 1);
+    }
+
+    #[test]
+    fn quoted_esclamation_quotation_mark() {
+        let test_tag = "<a href='b \" >!! a<??!!' theAtr=\">\">";
+        let mut fully_buffered_reader = FullyBufferedReader::new_from_string(test_tag.to_string());
+        let position = fully_buffered_reader
+            .find_out_of_quotes('>', 0, None)
+            .unwrap();
+        assert_eq!('>', test_tag.as_bytes()[position.unwrap()] as char);
+        assert_eq!(test_tag.len(), position.unwrap() + 1)
+    }
+    #[test]
+    fn missing_closing_quote() {
+        let test_tag = "<a href='blabla>";
+        let mut fully_buffered_reader = FullyBufferedReader::new_from_string(test_tag.to_string());
+        let error = fully_buffered_reader
+            .find_out_of_quotes('>', 0, None)
+            .unwrap_err();
+
+        assert_eq!(
+            error.message,
+            "Opening/closing quote not found for quote at (line 1, column 9)"
+        );
+    }
+    #[test]
+    fn missing_opening_quote() {
+        let test_tag = "<a href=blabla'>";
+        let mut fully_buffered_reader = FullyBufferedReader::new_from_string(test_tag.to_string());
+        let error = fully_buffered_reader
+            .find_out_of_quotes('>', 0, None)
+            .unwrap_err();
+        assert_eq!(
+            error.message,
+            "Opening/closing quote not found for quote at (line 1, column 15)"
+        );
+    }
+    #[test]
+    fn missing_closing_double_quote() {
+        let test_tag = "<a href=\"blabla>";
+        let mut fully_buffered_reader = FullyBufferedReader::new_from_string(test_tag.to_string());
+        let error = fully_buffered_reader
+            .find_out_of_quotes('>', 0, None)
+            .unwrap_err();
+        assert_eq!(
+            error.message,
+            "Opening/closing quote not found for quote at (line 1, column 9)"
+        );
+    }
+    #[test]
+    fn missing_opening_double_quote() {
+        let test_tag = "<a href=blabla\"a>";
+        let mut fully_buffered_reader = FullyBufferedReader::new_from_string(test_tag.to_string());
+        let error = fully_buffered_reader
+            .find_out_of_quotes('>', 0, None)
+            .unwrap_err();
+        assert_eq!(
+            error.message,
+            "Opening/closing quote not found for quote at (line 1, column 15)"
+        );
     }
 }
