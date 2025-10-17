@@ -25,7 +25,10 @@ impl std::error::Error for ArgsError {}
 // INTERNAL HELPER FUNCTIONS
 // ====================================================================
 
-/// Helper to replicate the custom string formatting used in the Java code.
+pub trait FormatParam: Debug {}
+impl<T> FormatParam for T where T: Debug {}
+
+// Helper function updated to format parameters and conditionally strip quotes
 fn format_msg(msg: &str, params: &[&dyn Debug]) -> String {
     let mut formatted = msg.to_string();
     for param in params {
@@ -33,7 +36,19 @@ fn format_msg(msg: &str, params: &[&dyn Debug]) -> String {
         if let Some(pos) = formatted.find("{}").or_else(|| formatted.find("%s")) {
             let (before, after) = formatted.split_at(pos);
             let placeholder_len = 2; // The length of "{}" or "%s"
-            formatted = format!("{}{:?}{}", before, param, &after[placeholder_len..]);
+            let mut replacement = format!("{:?}", param);
+            // if should_strip_quotes
+            if replacement.starts_with('"') && replacement.ends_with('"') && replacement.len() >= 2
+            {
+                replacement = replacement[1..replacement.len() - 1].to_string();
+            } else if replacement.starts_with('\"')
+                && replacement.ends_with('\"')
+                && replacement.len() >= 4
+            {
+                replacement = replacement[2..replacement.len() - 2].to_string();
+            }
+
+            formatted = format!("{}{}{}", before, replacement, &after[placeholder_len..]);
         } else {
             break;
         }
@@ -90,7 +105,11 @@ pub fn not_empty_str<'a>(argument: &'a str, name: &'a str) -> Result<&'a str> {
 }
 
 /// Checks a collection argument is not empty.
-pub fn not_empty_collection<T, C>(collection: C, message: &str, params: &[&dyn Debug]) -> Result<C>
+pub fn not_empty_collection<'a, T, C>(
+    collection: &'a C,
+    message: &str,
+    params: &[&dyn Debug],
+) -> Result<&'a C>
 where
     C: Borrow<[T]>,
 {
@@ -105,7 +124,8 @@ where
 }
 
 /// Checks a collection argument is not empty.
-pub fn not_empty_named_collection<T, C>(collection: C, name: &str) -> Result<C>
+/// Reley on the collection being able to be converted to a slice which implements is_empty().
+pub fn not_empty_named_collection<'a, T, C>(collection: &'a C, name: &'static str) -> Result<&'a C>
 where
     C: Borrow<[T]>,
 {
@@ -142,12 +162,127 @@ pub fn is_true(argument: bool, msg: &str, params: &[&dyn Debug]) -> Result<bool>
 
 /// Check if argument is false.
 pub fn is_false(argument: bool, msg: &str, params: &[&dyn Debug]) -> Result<bool> {
-    if argument {
-        let formatted_message = format_msg(msg, params);
-        Err(ArgsError {
-            message: formatted_message,
-        })
-    } else {
-        Ok(argument)
+    is_true(!argument, msg, params)
+    // if argument {
+    //     let formatted_message = format_msg(msg, params);
+    //     Err(ArgsError {
+    //         message: formatted_message,
+    //     })
+    // } else {
+    //     Ok(argument)
+    // }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn not_none_test() {
+        let result = not_none(Some(0), "P1");
+        assert!(result.is_ok());
+        let result = not_none(None as Option<u8>, "P1");
+        assert!(result.is_err());
+        assert_eq!(
+            "Argument 'P1' may not be empty.",
+            result.unwrap_err().message
+        );
+    }
+
+    #[test]
+    fn not_empty_char_sequence_test() {
+        let result = not_empty_char_sequence("abcd", "P1");
+        assert!(result.is_ok());
+        let result = not_empty_char_sequence("", "P1");
+        assert!(result.is_err());
+        assert_eq!(
+            "Argument 'P1' may not be empty.",
+            result.unwrap_err().message
+        );
+    }
+
+    #[test]
+    fn not_empty_str_test() {
+        let result = not_empty_str("abc", "P1");
+        assert!(result.is_ok());
+        let result = not_empty_str("", "P1");
+        assert!(result.is_err());
+        assert_eq!(
+            "Argument 'P1' may not be empty.",
+            result.unwrap_err().message
+        );
+    }
+
+    #[test]
+    fn not_empty_collection_test() {
+        let mut test_vec: Vec<usize> = Vec::new();
+        let result = not_empty_named_collection(&test_vec, "column");
+        assert!(result.is_err());
+
+        test_vec.push(1);
+        let result = not_empty_named_collection(&test_vec, "column");
+        assert!(result.is_ok());
+
+        let test_array = [0; 0];
+        let result = not_empty_named_collection(&test_array, "list");
+        assert!(result.is_err());
+
+        let test_array = [0];
+        let result = not_empty_named_collection(&test_array, "list");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn within_range_test() {
+        let result = within_range(&1, &3, 2, "P1");
+        assert!(result.is_ok());
+        let result = within_range(&1, &3, 4, "P1");
+        assert!(result.is_err());
+        assert_eq!(
+            "Argument 'P1' must have a value within [1,3], but was 4",
+            result.unwrap_err().message
+        );
+    }
+
+    #[test]
+    fn is_true_test() {
+        let arg = true;
+        let result = is_true(arg, "arg is not true", &[]);
+        assert!(result.is_ok());
+        let arg = false;
+        let result = is_true(arg, "{} arg is not true.", &[&"P1"]);
+        assert!(result.is_err());
+        assert_eq!("P1 arg is not true.", result.unwrap_err().message);
+    }
+
+    #[test]
+    fn is_false_test() {
+        let arg = false;
+        let result = is_false(arg, "arg is not false", &[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn format_test() {
+        let param: Vec<&dyn Debug> = vec![&1, &2, &3, &"abcd", &true];
+
+        assert_eq!(
+            "Params = 1, 2, 3, abcd, true.",
+            format_msg("Params = {}, {}, {}, {}, {}.", param.as_slice())
+        );
+
+        let param = "world";
+        assert_eq!("Hello world", format_msg("Hello {}", &[&param]));
+
+        #[derive(Debug)]
+        struct Blah {
+            _x: i8,
+        }
+        let blah = Blah { _x: 8 };
+
+        assert_eq!(
+            "blah is : Blah { _x: 8 }",
+            format_msg("blah is : {}", &[&blah])
+        );
     }
 }
