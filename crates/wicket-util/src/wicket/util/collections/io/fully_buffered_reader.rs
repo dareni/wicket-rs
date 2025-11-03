@@ -1,4 +1,5 @@
 use std::io::{self, Read};
+use thiserror::Error;
 
 /// This is not a reader like e.g. FileReader. It rather reads the whole data until the end from a
 /// source reader into memory and provides convenient methods for navigation and searching.
@@ -36,29 +37,31 @@ impl Default for FullyBufferedReader {
 }
 
 // Custom error for parsing exceptions
-#[derive(Debug)]
-pub struct ParseException {
-    message: String,
-    position: usize,
+#[derive(Debug, Error)]
+pub enum ParseException {
+    #[error(
+        "ParseException: Opening/closing quote not found for quote at (line \
+        {line_number}, column {column_number}) position {position}"
+    )]
+    Find {
+        line_number: usize,
+        column_number: usize,
+        position: usize,
+    },
+    #[error("ParseException: IO error caused by {cause}.")]
+    IO {
+        #[source]
+        cause: io::Error,
+    },
 }
-
-impl std::fmt::Display for ParseException {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "ParseException: {} at position {}",
-            self.message, self.position
-        )
-    }
-}
-
-impl std::error::Error for ParseException {}
 
 impl FullyBufferedReader {
     /// Read all the data from the `reader` into memory.
-    pub fn new(mut reader: impl Read) -> io::Result<Self> {
+    pub fn new(mut reader: impl Read) -> Result<Self, ParseException> {
         let mut input = String::new();
-        reader.read_to_string(&mut input)?;
+        reader
+            .read_to_string(&mut input)
+            .map_err(|e| ParseException::IO { cause: e })?;
         Ok(Self {
             input,
             ..Self::default()
@@ -190,12 +193,9 @@ impl FullyBufferedReader {
         }
 
         if current_quotation_char.is_some() {
-            return Err(ParseException {
-                message: format!(
-                    "Opening/closing quote not found for quote at (line {}, column {})",
-                    self.get_line_number(),
-                    self.get_column_number()
-                ),
+            return Err(ParseException::Find {
+                line_number: self.get_line_number(),
+                column_number: self.get_column_number(),
                 position: start_pos,
             });
         }
@@ -272,8 +272,8 @@ mod test {
             .unwrap_err();
 
         assert_eq!(
-            error.message,
-            "Opening/closing quote not found for quote at (line 1, column 9)"
+            error.to_string(),
+            "ParseException: Opening/closing quote not found for quote at (line 1, column 9) position 0"
         );
     }
     #[test]
@@ -284,8 +284,8 @@ mod test {
             .find_out_of_quotes('>', 0, None)
             .unwrap_err();
         assert_eq!(
-            error.message,
-            "Opening/closing quote not found for quote at (line 1, column 15)"
+            error.to_string(),
+            "ParseException: Opening/closing quote not found for quote at (line 1, column 15) position 0"
         );
     }
     #[test]
@@ -296,8 +296,8 @@ mod test {
             .find_out_of_quotes('>', 0, None)
             .unwrap_err();
         assert_eq!(
-            error.message,
-            "Opening/closing quote not found for quote at (line 1, column 9)"
+            error.to_string(),
+            "ParseException: Opening/closing quote not found for quote at (line 1, column 9) position 0"
         );
     }
     #[test]
@@ -308,8 +308,8 @@ mod test {
             .find_out_of_quotes('>', 0, None)
             .unwrap_err();
         assert_eq!(
-            error.message,
-            "Opening/closing quote not found for quote at (line 1, column 15)"
+            error.to_string(),
+            "ParseException: Opening/closing quote not found for quote at (line 1, column 15) position 0"
         );
     }
 }
