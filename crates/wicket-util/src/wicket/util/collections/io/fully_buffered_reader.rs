@@ -78,13 +78,11 @@ impl FullyBufferedReader {
     /// If `toPos`` > 0, then get all data from the position marker to the end.
     /// If `toPos`` is less than the position marker then return an empty string.
     /// A string of raw markup in between these to two positions is returned.
-    pub fn get_substring_from_position_marker(&self, to_pos: isize) -> &str {
-        if to_pos < 0 {
-            &self.input[self.position_marker..]
-        } else if (to_pos as usize) < self.position_marker {
-            ""
-        } else {
-            &self.input[self.position_marker..to_pos as usize]
+    pub fn get_substring_from_position_marker(&self, to_pos: Option<usize>) -> &str {
+        match to_pos {
+            None => &self.input[self.position_marker..],
+            Some(x) if x < self.position_marker => "",
+            Some(x) => &self.input[self.position_marker..x],
         }
     }
 
@@ -234,7 +232,7 @@ impl FullyBufferedReader {
     // Get the character at the position provided.
     // @param pos The position.
     // @return char at position.
-    pub fn char_at(self, pos: usize) -> char {
+    pub fn char_at(&self, pos: usize) -> char {
         self.input.as_bytes()[pos] as char
     }
 }
