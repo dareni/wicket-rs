@@ -13,13 +13,13 @@ pub struct FullyBufferedReader {
     /// Current line number.
     line_number: usize,
 
-    /// Current column number.
+    /// Current column number (chars not bytes).
     column_number: usize,
 
     /// Last place we counted lines from.
     last_line_count_index: usize,
 
-    /// A variable to remember a certain position in the markup
+    /// A variable to remember a certain byte index position in the markup
     position_marker: usize,
 }
 
@@ -53,6 +53,8 @@ pub enum ParseException {
         #[source]
         cause: io::Error,
     },
+    #[error("Invalid character found at position {0}")]
+    InvalidChar(usize),
 }
 
 impl FullyBufferedReader {
@@ -77,7 +79,7 @@ impl FullyBufferedReader {
     }
 
     /// Get the characters from the internal position marker to `toPos`.
-    /// Set `toPos` as the index of the last character non inclusive.
+    /// Set `toPos` as the byte index of the last utf8 character non inclusive.
     /// If `toPos`` > 0, then get all data from the position marker to the end.
     /// If `toPos`` is less than the position marker then return an empty string.
     /// A string of raw markup in between these to two positions is returned.
@@ -89,7 +91,7 @@ impl FullyBufferedReader {
         }
     }
 
-    /// Get the characters from in between both positions including
+    /// Get the utf8 characters from in between both positions(byte indices) including
     /// the char at fromPos, excluding the char at toPos.
     pub fn get_substring(&self, from_pos: usize, to_pos: usize) -> Option<&str> {
         self.input.get(from_pos..to_pos)
@@ -111,16 +113,17 @@ impl FullyBufferedReader {
     }
 
     // Counts lines starting where we last left off up to the index provided.
+    // `end` must be the byte index to a utf8 char.
     pub fn count_lines_to(&mut self, end: usize) {
         let input_slice = &self.input[self.last_line_count_index..end];
-        let sl = input_slice.bytes();
+        let sl = input_slice.chars();
         sl.for_each(|ch| {
             match ch {
-                b'\n' => {
+                '\n' => {
                     self.column_number = 1;
                     self.line_number += 1;
                 }
-                b'\r' => {
+                '\r' => {
                     // Do nothing.
                 }
                 _ => {
@@ -143,7 +146,7 @@ impl FullyBufferedReader {
         self.input[start_pos..].find(ch).map(|i| i + start_pos)
     }
 
-    /// Find the string starting ath the current input position.
+    /// Find the string starting at the current input position.
     pub fn find_str(&self, strg: &str) -> Option<usize> {
         self.input[self.input_position..]
             .find(strg)
@@ -167,29 +170,29 @@ impl FullyBufferedReader {
     ) -> Result<Option<usize>, ParseException> {
         let mut current_quotation_char = quotation_char;
         let mut i = start_pos;
+        let mut previous_char: Option<char> = None;
         while i < self.input.len() {
-            let current_char = self.input.as_bytes()[i] as char;
+            let current_char = self.input[i..]
+                .chars()
+                .next()
+                .ok_or(ParseException::InvalidChar(i))?;
 
             if current_quotation_char.is_none() {
                 if current_char == '\'' || current_char == '\"' {
                     current_quotation_char = Some(current_char);
                     self.count_lines_to(start_pos + i);
                 }
-            } else {
-                let previous_char = if i > 0 {
-                    self.input.as_bytes()[i - 1] as char
-                } else {
-                    '\0'
-                };
-                if current_char == current_quotation_char.unwrap() && previous_char != '\\' {
-                    current_quotation_char = None;
-                }
+            } else if current_quotation_char.is_some_and(|q_char| q_char == current_char)
+                && previous_char.is_some_and(|pc| pc != '\\')
+            {
+                current_quotation_char = None;
             }
 
             if current_char == ch && current_quotation_char.is_none() {
                 return Ok(Some(i));
             }
-            i += 1;
+            previous_char = Some(current_char);
+            i += current_char.len_utf8();
         }
 
         if current_quotation_char.is_some() {
