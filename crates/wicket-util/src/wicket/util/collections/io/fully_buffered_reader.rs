@@ -55,6 +55,39 @@ pub enum ParseException {
     },
     #[error("Invalid character found at position {0}")]
     InvalidChar(usize),
+    #[error("No matching close bracket at (line {line}, column {column}) at position {position}.")]
+    NoCloseBracketIndex {
+        line: usize,
+        column: usize,
+        position: usize,
+    },
+    #[error("Malformed tag at (line {line}, column {column}) at position {position}.")]
+    MalformedTag {
+        line: usize,
+        column: usize,
+        position: usize,
+    },
+
+    #[error("No open bracket index while finding a tag/body at position {0}")]
+    NoOpenBracketIndexFindingTag(usize),
+    #[error("No open bracket index while setting line number at position {0}")]
+    NoOpenBracketIndexSettingLineNo(usize),
+    #[error("No open bracket index while obtaining tag text at position {0}.")]
+    NoOpenBracketIndexGettingTagText(usize),
+    #[error("Found empty tag: '<>' at (line {line}, column {column}) at position {position}.")]
+    EmptyTag {
+        line: usize,
+        column: usize,
+        position: usize,
+    },
+    #[error("Unclosed conditional comment beginning at (line {line}, column {column}) at position {position}.")]
+    UnclosedComment {
+        line: usize,
+        column: usize,
+        position: usize,
+    },
+    #[error("No text for special tag position {0}.")]
+    NoSpecialTagText(usize),
 }
 
 impl FullyBufferedReader {
