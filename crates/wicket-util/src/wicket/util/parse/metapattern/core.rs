@@ -1,9 +1,92 @@
-use regex::{Regex, RegexBuilder};
 use std::borrow::Cow;
 use std::fmt;
-use thiserror::Error;
+use std::num::ParseIntError;
 
 use once_cell::sync::Lazy;
+use regex::{Error as RegexError, Regex, RegexBuilder};
+use thiserror::Error;
+
+/// Simplify static Pattern creation boiler plate; lazy construction once shared everywhere.
+macro_rules! static_meta {
+    ($name:ident, $re:expr) => {
+        pub static $name: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed($re)));
+    };
+}
+
+// Static regex string patterns.
+pub static _DOUBLE_QUOTED_STRING: &str = r#""[^"]*?""#;
+pub static _SINGLE_QUOTED_STRING: &str = r#"'[^']*?'"#;
+pub static _STRING: Lazy<String> = Lazy::new(|| {
+    format!(
+        r"(?:[\w\-\.]+|{}{}{}{}",
+        _DOUBLE_QUOTED_STRING, "|", _SINGLE_QUOTED_STRING, ")"
+    )
+});
+pub static _OPTIONAL_STRING: Lazy<String> = Lazy::new(|| format!("{}{}", _STRING.as_str(), "?"));
+pub static _VARIABLE_NAME: &str = "[A-Za-z_][A-Za-z0-9_-]*";
+/// Allow non xml char '@' for VueJS (see https://www.w3.org/TR/REC-xml/#NT-NameStartChar).
+pub static _XML_NAME: &str = r"[A-Za-z_:@][A-Za-z0-9_.-]*";
+
+// Cached compiled regex.
+static_meta!(WHITESPACE, r"\s+");
+static_meta!(OPTIONAL_WHITESPACE, r"\s*");
+static_meta!(NON_WORD, r"\W+");
+static_meta!(COMMA, r",");
+static_meta!(COLON, r":");
+static_meta!(SEMICOLON, r";");
+static_meta!(SLASH, r"/");
+static_meta!(BACKSLASH, r"\\");
+static_meta!(DOT, r"\.");
+static_meta!(PLUS, r"\+");
+static_meta!(MINUS, r"-");
+static_meta!(DASH, r"-");
+static_meta!(UNDERSCORE, r"_");
+static_meta!(AMPERSAND, r"&");
+static_meta!(PERCENT, r"%");
+static_meta!(DOLLAR_SIGN, r"$");
+static_meta!(POUND_SIGN, r"#");
+static_meta!(AT_SIGN, r"@");
+static_meta!(EXCLAMATION_POINT, r"!");
+static_meta!(TILDE, r"~");
+static_meta!(EQUALS, r"=");
+static_meta!(STAR, r"\*");
+static_meta!(PIPE, r"\|");
+static_meta!(LEFT_PAREN, r"$");
+static_meta!(RIGHT_PAREN, r"$");
+static_meta!(LEFT_CURLY, r"\{");
+static_meta!(RIGHT_CURLY, r"\}");
+static_meta!(LEFT_SQUARE, r"$$");
+static_meta!(RIGHT_SQUARE, r"$$");
+static_meta!(DIGIT, r"\d");
+static_meta!(DIGITS, r"\d+");
+static_meta!(INTEGER, r"-?\d+");
+static_meta!(FLOATING_POINT_NUMBER, r"-?\d+\.?\d*|-?\.\d+");
+static_meta!(POSITIVE_INTEGER, r"\d+");
+static_meta!(HEXADECIMAL_DIGIT, r"[0-9a-fA-F]");
+static_meta!(HEXADECIMAL_DIGITS, r"[0-9a-fA-F]+");
+static_meta!(ANYTHING, r".*");
+static_meta!(ANYTHING_NON_EMPTY, r".+");
+static_meta!(WORD, r"\w+");
+static_meta!(OPTIONAL_WORD, r"\w*");
+
+pub static VARIABLE_NAME: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed(_VARIABLE_NAME)));
+pub static XML_ELEMENT_NAME: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed(_XML_NAME)));
+pub static XML_ATTRIBUTE_NAME: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed(_XML_NAME)));
+pub static PERL_INTERPOLATION: Lazy<Pattern> =
+    Lazy::new(|| Pattern::new(Cow::Owned(format!(r"\$\{{{}\}}", _VARIABLE_NAME))));
+pub static DOUBLE_QUOTED_STRING: Lazy<Pattern> =
+    Lazy::new(|| Pattern::new(Cow::Borrowed(_DOUBLE_QUOTED_STRING)));
+pub static STRING: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed(_STRING.as_ref())));
+pub static OPTIONAL_STRING: Lazy<Pattern> =
+    Lazy::new(|| Pattern::new(Cow::Borrowed(_OPTIONAL_STRING.as_ref())));
+
+/// Uses named groups 'key' and 'value'
+pub static STRING_VARIABLE_ASSIGNMENT: Lazy<Pattern> =
+    Lazy::new(|| Pattern::new(Cow::Owned(get_variable_assignment_pattern::<&str>(None))));
+
+/// Uses named groups 'key' and 'value'
+pub static INTEGER_VARIABLE_ASSIGNMENT: Lazy<Pattern> =
+    Lazy::new(|| Pattern::new(Cow::Owned(get_integer_assignment_pattern())));
 
 pub struct Pattern {
     source: Cow<'static, str>,
@@ -80,17 +163,19 @@ impl PatternOps for String {
     }
 }
 
+/// Parsing operation exceptions.
 #[derive(Debug, Error)]
-pub enum RegexException {
-    #[error("Group already Bound: {raw} ")]
-    GroupAlreadyBound { raw: String },
-    #[error("Group overflow: {raw} ")]
-    GroupOverflow { raw: String },
-    #[error("No regex pattern.")]
-    NoPattern,
+pub enum ParserError {
+    #[error("Exception raised by regex engine: {0}")]
+    Regex(#[from] RegexError),
+    /// Indicates that the current pattern didn't match.
+    #[error("No match found")]
+    NoMatch,
+    #[error("Input was not a valid integer: {0}")]
+    ParseIntError(#[from] ParseIntError),
 }
 
-/// Flags that correspond to `regex::RegexBuilder` options.
+/// Flags corresponding to `regex::RegexBuilder` options.
 #[derive(Default, Clone, Copy)]
 pub struct RegexFlags {
     pub case_insensitive: bool,
@@ -103,10 +188,10 @@ pub mod capture_name {
     pub static KEY: &str = "key";
     pub static VALUE: &str = "value";
 }
-// -----------------------------------------------------------------------------
-// pattern builds
-// -----------------------------------------------------------------------------
 
+// Variable assignment pattern build.
+
+/// The optional namespace like "namespace:*[:*]"
 pub fn get_namespace_pattern() -> String {
     let namespace = String::with_capacity(60)
         .append_pattern(VARIABLE_NAME.as_str())
@@ -119,18 +204,18 @@ pub fn get_namespace_pattern() -> String {
         );
     namespace.make_pattern_optional()
 }
-
-pub fn get_value_pattern() -> String {
-    let namespace = get_namespace_pattern();
-    let key_group = namespace
+/// The key (lvalue) like "name" or "namespace:name" or "namespace:name:subname"
+pub fn get_key_group_pattern() -> String {
+    let key_group = get_namespace_pattern()
         .append_pattern(XML_ATTRIBUTE_NAME.as_str())
         .name_the_pattern(capture_name::KEY);
     key_group
 }
-
-/// Defaults to a value_pattern of STRING.
+/// Parses key value assignment statements like "foo=bar" but also supporting namespaces like
+/// "wicket:foo=bar". However the 'key' value returned will contain "wicket:foo". It does not
+/// separate namespace and name.
 pub fn get_variable_assignment_pattern<T: AsRef<str>>(value_pattern_opt: Option<T>) -> String {
-    let key_group = get_value_pattern();
+    let key_group = get_key_group_pattern();
     let value_pattern = match value_pattern_opt {
         Some(val) => val.as_ref().to_string(),
         None => STRING.as_str().to_string(),
@@ -155,82 +240,23 @@ pub fn get_variable_assignment_pattern<T: AsRef<str>>(value_pattern_opt: Option<
     full_key_value_assignment_pattern
 }
 
-// -----------------------------------------------------------------------------
-// static regex patterns
-// -----------------------------------------------------------------------------
+// Integer assignment pattern build.
 
-/// Simplify static MetaPattern creation boiler plate; lazy construction once shared everywhere.
-macro_rules! static_meta {
-    ($name:ident, $re:expr) => {
-        pub static $name: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed($re)));
-    };
+/// Parses integer variable assignments, such as "x = 9" or "x=9".
+pub fn get_integer_assignment_pattern() -> String {
+    let variable_group_pattern = String::with_capacity(100)
+        .append_pattern(VARIABLE_NAME.as_str())
+        .name_the_pattern(capture_name::KEY);
+    let value_group_pattern =
+        String::with_capacity(100).append_as_named_pattern(INTEGER.as_str(), capture_name::VALUE);
+
+    let pattern = variable_group_pattern
+        .append_pattern(OPTIONAL_WHITESPACE.as_str())
+        .append_pattern(EQUALS.as_str())
+        .append_pattern(OPTIONAL_WHITESPACE.as_str())
+        .append_pattern(value_group_pattern);
+    pattern
 }
-
-pub static _DOUBLE_QUOTED_STRING: &str = r#""[^"]*?""#;
-pub static _SINGLE_QUOTED_STRING: &str = r#"'[^']*?'"#;
-pub static _STRING: Lazy<String> = Lazy::new(|| {
-    format!(
-        r"(?:[\w\-\.]+|{}{}{}{}",
-        _DOUBLE_QUOTED_STRING, "|", _SINGLE_QUOTED_STRING, ")"
-    )
-});
-pub static _OPTIONAL_STRING: Lazy<String> = Lazy::new(|| format!("{}{}", _STRING.as_str(), "?"));
-pub static _VARIABLE_NAME: &str = "[A-Za-z_][A-Za-z0-9_-]*";
-pub static _XML_NAME: &str = r"[A-Za-z_:@][A-Za-z0-9_.-]*";
-static_meta!(WHITESPACE, r"\s+");
-static_meta!(OPTIONAL_WHITESPACE, r"\s*");
-static_meta!(NON_WORD, r"\W+");
-static_meta!(COMMA, r",");
-static_meta!(COLON, r":");
-static_meta!(SEMICOLON, r";");
-static_meta!(SLASH, r"/");
-static_meta!(BACKSLASH, r"\\");
-static_meta!(DOT, r"\.");
-static_meta!(PLUS, r"\+");
-static_meta!(MINUS, r"-");
-static_meta!(DASH, r"-");
-static_meta!(UNDERSCORE, r"_");
-static_meta!(AMPERSAND, r"&");
-static_meta!(PERCENT, r"%");
-static_meta!(DOLLAR_SIGN, r"$");
-static_meta!(POUND_SIGN, r"#");
-static_meta!(AT_SIGN, r"@");
-static_meta!(EXCLAMATION_POINT, r"!");
-static_meta!(TILDE, r"~");
-static_meta!(EQUALS, r"=");
-static_meta!(STAR, r"\*");
-static_meta!(PIPE, r"\|");
-static_meta!(LEFT_PAREN, r"$");
-static_meta!(RIGHT_PAREN, r"$");
-static_meta!(LEFT_CURLY, r"\{");
-static_meta!(RIGHT_CURLY, r"\}");
-static_meta!(LEFT_SQUARE, r"$$");
-static_meta!(RIGHT_SQUARE, r"$$");
-static_meta!(DIGIT, r"\d");
-static_meta!(DIGITS, r"\d+");
-static_meta!(INTEGER, r"-?\d+");
-static_meta!(FLOATING_POINT_NUMBER, r"-?\d+\.?\d*|-?\.\d+");
-static_meta!(POSITIVE_INTEGER, r"\d+");
-static_meta!(HEXADECIMAL_DIGIT, r"[0-9a-fA-F]");
-static_meta!(HEXADECIMAL_DIGITS, r"[0-9a-fA-F]+");
-static_meta!(ANYTHING, r".*");
-static_meta!(ANYTHING_NON_EMPTY, r".+");
-static_meta!(WORD, r"\w+");
-static_meta!(OPTIONAL_WORD, r"\w*");
-pub static VARIABLE_NAME: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed(_VARIABLE_NAME)));
-pub static XML_ELEMENT_NAME: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed(_XML_NAME)));
-pub static XML_ATTRIBUTE_NAME: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed(_XML_NAME)));
-pub static PERL_INTERPOLATION: Lazy<Pattern> =
-    Lazy::new(|| Pattern::new(Cow::Owned(format!(r"\$\{{{}\}}", _VARIABLE_NAME))));
-pub static DOUBLE_QUOTED_STRING: Lazy<Pattern> =
-    Lazy::new(|| Pattern::new(Cow::Borrowed(_DOUBLE_QUOTED_STRING)));
-pub static STRING: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed(_STRING.as_ref())));
-pub static OPTIONAL_STRING: Lazy<Pattern> =
-    Lazy::new(|| Pattern::new(Cow::Borrowed(_OPTIONAL_STRING.as_ref())));
-
-pub static STRING_VARIABLE_ASSIGNMENT: Lazy<Pattern> =
-    Lazy::new(|| Pattern::new(Cow::Owned(get_variable_assignment_pattern::<&str>(None))));
-// ----------------------------------------------
 
 #[cfg(test)]
 mod test {
