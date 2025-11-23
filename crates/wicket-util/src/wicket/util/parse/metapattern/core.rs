@@ -132,14 +132,18 @@ impl fmt::Display for Pattern {
 
 pub trait PatternOps: Sized + std::fmt::Display {
     fn append_pattern<T: AsRef<str>>(self, suffix: T) -> String;
-    fn append_as_named_pattern<T: AsRef<str>>(
-        self,
-        pattern: T,
-        pattern_name: &'static str,
-    ) -> String;
-    fn name_the_pattern(self, pattern_name: &'static str) -> String {
+    fn append_named_capture<T: AsRef<str>>(self, pattern: T, pattern_name: &'static str) -> String;
+    fn capture_group_named(self, pattern_name: &'static str) -> String {
         format!("(?P<{}>{})", pattern_name, self)
     }
+    fn capture_group_unnamed(self) -> String {
+        format!("({})", self)
+    }
+    /// A non catpure group.
+    fn make_pattern_group(self) -> String {
+        format!("(?:{})", self)
+    }
+    // An optional non capture group.
     fn make_pattern_optional(self) -> String {
         format!("(?:{})?", self)
     }
@@ -152,7 +156,7 @@ impl PatternOps for String {
         self
     }
 
-    fn append_as_named_pattern<T: AsRef<str>>(
+    fn append_named_capture<T: AsRef<str>>(
         mut self,
         pattern: T,
         pattern_name: &'static str,
@@ -208,7 +212,7 @@ pub fn get_namespace_pattern() -> String {
 pub fn get_key_group_pattern() -> String {
     let key_group = get_namespace_pattern()
         .append_pattern(XML_ATTRIBUTE_NAME.as_str())
-        .name_the_pattern(capture_name::KEY);
+        .capture_group_named(capture_name::KEY);
     key_group
 }
 /// Parses key value assignment statements like "foo=bar" but also supporting namespaces like
@@ -221,7 +225,7 @@ pub fn get_variable_assignment_pattern<T: AsRef<str>>(value_pattern_opt: Option<
         None => STRING.as_str().to_string(),
     };
     let value_group =
-        String::with_capacity(50).append_as_named_pattern(value_pattern, capture_name::VALUE);
+        String::with_capacity(50).append_named_capture(value_pattern, capture_name::VALUE);
     let variable_assignment = String::with_capacity(60)
         .append_pattern(OPTIONAL_WHITESPACE.as_str())
         .append_pattern(EQUALS.as_str())
@@ -246,9 +250,9 @@ pub fn get_variable_assignment_pattern<T: AsRef<str>>(value_pattern_opt: Option<
 pub fn get_integer_assignment_pattern() -> String {
     let variable_group_pattern = String::with_capacity(100)
         .append_pattern(VARIABLE_NAME.as_str())
-        .name_the_pattern(capture_name::KEY);
+        .capture_group_named(capture_name::KEY);
     let value_group_pattern =
-        String::with_capacity(100).append_as_named_pattern(INTEGER.as_str(), capture_name::VALUE);
+        String::with_capacity(100).append_named_capture(INTEGER.as_str(), capture_name::VALUE);
 
     let pattern = variable_group_pattern
         .append_pattern(OPTIONAL_WHITESPACE.as_str())
@@ -267,11 +271,11 @@ mod test {
     fn simple() {
         let key_value_cap = VARIABLE_NAME
             .to_string()
-            .name_the_pattern(capture_name::KEY)
+            .capture_group_named(capture_name::KEY)
             .append_pattern(OPTIONAL_WHITESPACE.as_str())
             .append_pattern(EQUALS.as_str())
             .append_pattern(OPTIONAL_WHITESPACE.as_str())
-            .append_as_named_pattern(INTEGER.as_str(), capture_name::VALUE);
+            .append_named_capture(INTEGER.as_str(), capture_name::VALUE);
 
         let key_value_pattern: Pattern = Pattern::new(Cow::Owned(key_value_cap));
         let caps_opt = key_value_pattern.regex.captures("foo = 9");
