@@ -7,12 +7,16 @@ use regex::{Error as RegexError, Regex, RegexBuilder};
 use thiserror::Error;
 
 /// Simplify static Pattern creation boiler plate; lazy construction once shared everywhere.
-macro_rules! static_meta {
+macro_rules! static_pattern {
     ($name:ident, $re:expr) => {
         pub static $name: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed($re)));
     };
 }
-
+macro_rules! static_pattern_owned {
+    ($name:ident, $re:expr) => {
+        pub static $name: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Owned($re)));
+    };
+}
 // Static regex string patterns.
 pub static _DOUBLE_QUOTED_STRING: &str = r#""[^"]*?""#;
 pub static _SINGLE_QUOTED_STRING: &str = r#"'[^']*?'"#;
@@ -28,69 +32,65 @@ pub static _VARIABLE_NAME: &str = "[A-Za-z_][A-Za-z0-9_-]*";
 pub static _XML_NAME: &str = r"[A-Za-z_:@][A-Za-z0-9_.-]*";
 
 // Cached compiled regex.
-static_meta!(WHITESPACE, r"\s+");
-static_meta!(OPTIONAL_WHITESPACE, r"\s*");
-static_meta!(NON_WORD, r"\W+");
-static_meta!(COMMA, r",");
-static_meta!(COLON, r":");
-static_meta!(SEMICOLON, r";");
-static_meta!(SLASH, r"/");
-static_meta!(BACKSLASH, r"\\");
-static_meta!(DOT, r"\.");
-static_meta!(PLUS, r"\+");
-static_meta!(MINUS, r"-");
-static_meta!(DASH, r"-");
-static_meta!(UNDERSCORE, r"_");
-static_meta!(AMPERSAND, r"&");
-static_meta!(PERCENT, r"%");
-static_meta!(DOLLAR_SIGN, r"\$");
-static_meta!(POUND_SIGN, r"#");
-static_meta!(AT_SIGN, r"@");
-static_meta!(EXCLAMATION_POINT, r"!");
-static_meta!(TILDE, r"~");
-static_meta!(EQUALS, r"=");
-static_meta!(STAR, r"\*");
-static_meta!(PIPE, r"\|");
-static_meta!(LEFT_PAREN, r"\(");
-static_meta!(RIGHT_PAREN, r"\)");
-static_meta!(LEFT_CURLY, r"\{");
-static_meta!(RIGHT_CURLY, r"\}");
-static_meta!(LEFT_SQUARE, r"\[");
-static_meta!(RIGHT_SQUARE, r"\]");
-static_meta!(DIGIT, r"\d");
-static_meta!(DIGITS, r"\d+");
-static_meta!(INTEGER, r"-?\d+");
-static_meta!(FLOATING_POINT_NUMBER, r"-?\d+\.?\d*|-?\.\d+");
-static_meta!(POSITIVE_INTEGER, r"\d+");
-static_meta!(HEXADECIMAL_DIGIT, r"[0-9a-fA-F]");
-static_meta!(HEXADECIMAL_DIGITS, r"[0-9a-fA-F]+");
-static_meta!(ANYTHING, r".*");
-static_meta!(ANYTHING_NON_EMPTY, r".+");
-static_meta!(WORD, r"\w+");
-static_meta!(OPTIONAL_WORD, r"\w*");
-
-pub static VARIABLE_NAME: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed(_VARIABLE_NAME)));
-pub static XML_ELEMENT_NAME: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed(_XML_NAME)));
-pub static XML_ATTRIBUTE_NAME: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed(_XML_NAME)));
-pub static PERL_INTERPOLATION: Lazy<Pattern> =
-    Lazy::new(|| Pattern::new(Cow::Owned(format!(r"\$\{{{}\}}", _VARIABLE_NAME))));
-pub static DOUBLE_QUOTED_STRING: Lazy<Pattern> =
-    Lazy::new(|| Pattern::new(Cow::Borrowed(_DOUBLE_QUOTED_STRING)));
-pub static STRING: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed(_STRING.as_ref())));
-pub static OPTIONAL_STRING: Lazy<Pattern> =
-    Lazy::new(|| Pattern::new(Cow::Borrowed(_OPTIONAL_STRING.as_ref())));
-
-/// Uses named groups 'key' and 'value'
-pub static STRING_VARIABLE_ASSIGNMENT: Lazy<Pattern> =
-    Lazy::new(|| Pattern::new(Cow::Owned(get_variable_assignment_pattern::<&str>(None))));
-
-/// Uses named groups 'key' and 'value'
-pub static INTEGER_VARIABLE_ASSIGNMENT: Lazy<Pattern> =
-    Lazy::new(|| Pattern::new(Cow::Owned(get_integer_assignment_pattern())));
-
-/// Uses group 1
-pub static COMMA_SEPARATED_VARIABLE_PATTERN: Lazy<Pattern> =
-    Lazy::new(|| Pattern::new(Cow::Owned(get_comma_separated_variable_pattern())));
+static_pattern!(WHITESPACE, r"\s+");
+static_pattern!(OPTIONAL_WHITESPACE, r"\s*");
+static_pattern!(NON_WORD, r"\W+");
+static_pattern!(COMMA, r",");
+static_pattern!(COLON, r":");
+static_pattern!(SEMICOLON, r";");
+static_pattern!(SLASH, r"/");
+static_pattern!(BACKSLASH, r"\\");
+static_pattern!(DOT, r"\.");
+static_pattern!(PLUS, r"\+");
+static_pattern!(MINUS, r"-");
+static_pattern!(DASH, r"-");
+static_pattern!(UNDERSCORE, r"_");
+static_pattern!(AMPERSAND, r"&");
+static_pattern!(PERCENT, r"%");
+static_pattern!(DOLLAR_SIGN, r"\$");
+static_pattern!(POUND_SIGN, r"#");
+static_pattern!(AT_SIGN, r"@");
+static_pattern!(EXCLAMATION_POINT, r"!");
+static_pattern!(TILDE, r"~");
+static_pattern!(EQUALS, r"=");
+static_pattern!(STAR, r"\*");
+static_pattern!(PIPE, r"\|");
+static_pattern!(LEFT_PAREN, r"\(");
+static_pattern!(RIGHT_PAREN, r"\)");
+static_pattern!(LEFT_CURLY, r"\{");
+static_pattern!(RIGHT_CURLY, r"\}");
+static_pattern!(LEFT_SQUARE, r"\[");
+static_pattern!(RIGHT_SQUARE, r"\]");
+static_pattern!(DIGIT, r"\d");
+static_pattern!(DIGITS, r"\d+");
+static_pattern!(INTEGER, r"-?\d+");
+static_pattern!(FLOATING_POINT_NUMBER, r"-?\d+\.?\d*|-?\.\d+");
+static_pattern!(POSITIVE_INTEGER, r"\d+");
+static_pattern!(HEXADECIMAL_DIGIT, r"[0-9a-fA-F]");
+static_pattern!(HEXADECIMAL_DIGITS, r"[0-9a-fA-F]+");
+static_pattern!(ANYTHING, r".*");
+static_pattern!(ANYTHING_NON_EMPTY, r".+");
+static_pattern!(WORD, r"\w+");
+static_pattern!(OPTIONAL_WORD, r"\w*");
+static_pattern!(VARIABLE_NAME, &_VARIABLE_NAME);
+static_pattern!(XML_ELEMENT_NAME, &_XML_NAME);
+static XML_ATTRIBUTE_NAME: &once_cell::sync::Lazy<Pattern> = &XML_ELEMENT_NAME;
+static_pattern_owned!(PERL_INTERPOLATION, format!(r"\$\{{{}\}}", _VARIABLE_NAME));
+static_pattern!(DOUBLE_QUOTED_STRING, &_DOUBLE_QUOTED_STRING);
+static_pattern!(STRING, &_STRING);
+static_pattern!(OPTIONAL_STRING, &_OPTIONAL_STRING);
+static_pattern_owned!(
+    STRING_VARIABLE_ASSIGNMENT,
+    get_variable_assignment_pattern::<&str>(None)
+);
+static_pattern_owned!(
+    INTEGER_VARIABLE_ASSIGNMENT,
+    get_integer_assignment_pattern()
+);
+static_pattern_owned!(
+    COMMA_SEPARATED_VARIABLE,
+    get_comma_separated_variable_pattern()
+);
 
 pub struct Pattern {
     source: Cow<'static, str>,
@@ -221,7 +221,8 @@ pub fn get_key_group_pattern() -> String {
 }
 /// Parses key value assignment statements like "foo=bar" but also supporting namespaces like
 /// "wicket:foo=bar". However the 'key' value returned will contain "wicket:foo". It does not
-/// separate namespace and name.
+/// separate namespace and name. Uses named groups capture_name::{KEY, VALUE}
+/// The value_pattern_opt defaults to STRING.
 pub fn get_variable_assignment_pattern<T: AsRef<str>>(value_pattern_opt: Option<T>) -> String {
     let key_group = get_key_group_pattern();
     let value_pattern = match value_pattern_opt {
