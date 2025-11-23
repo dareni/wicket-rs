@@ -5,6 +5,7 @@ use crate::wicket::util::parse::metapattern::ParserError;
 use crate::wicket::util::parse::metapattern::Pattern;
 use crate::wicket::util::parse::metapattern::INTEGER_VARIABLE_ASSIGNMENT;
 use crate::wicket::util::parse::metapattern::STRING_VARIABLE_ASSIGNMENT;
+use crate::wicket::util::parse::metapattern::XML_TAG_NAME;
 
 pub struct StringVariableAssignmentParser<'a> {
     captures: Option<Captures<'a>>,
@@ -34,7 +35,7 @@ impl<'a> StringVariableAssignmentParser<'a> {
         match &self.captures {
             Some(cap) => match cap.name(capture_name::KEY) {
                 Some(val) => Ok(val.as_str()),
-                None => Err(ParserError::NoMatch),
+                None => Err(ParserError::NoGroupMatch),
             },
             None => Err(ParserError::NoMatch),
         }
@@ -44,7 +45,7 @@ impl<'a> StringVariableAssignmentParser<'a> {
         match &self.captures {
             Some(cap) => match cap.name(capture_name::VALUE) {
                 Some(val) => Ok(val.as_str()),
-                None => Err(ParserError::NoMatch),
+                None => Err(ParserError::NoGroupMatch),
             },
             None => Err(ParserError::NoMatch),
         }
@@ -79,7 +80,7 @@ impl<'a> IntegerVariableAssignmentParser<'a> {
         match &self.captures {
             Some(cap) => match cap.name(capture_name::KEY) {
                 Some(val) => Ok(val.as_str()),
-                None => Err(ParserError::NoMatch),
+                None => Err(ParserError::NoGroupMatch),
             },
             None => Err(ParserError::NoMatch),
         }
@@ -89,7 +90,7 @@ impl<'a> IntegerVariableAssignmentParser<'a> {
         match &self.captures {
             Some(cap) => match cap.name(capture_name::VALUE) {
                 Some(val) => Ok(val.as_str()),
-                None => Err(ParserError::NoMatch),
+                None => Err(ParserError::NoGroupMatch),
             },
             None => Err(ParserError::NoMatch),
         }
@@ -99,7 +100,48 @@ impl<'a> IntegerVariableAssignmentParser<'a> {
         match &self.captures {
             Some(cap) => match cap.name(capture_name::VALUE) {
                 Some(val) => Ok(val.as_str().parse::<i64>()?),
-                None => Err(ParserError::NoMatch),
+                None => Err(ParserError::NoGroupMatch),
+            },
+            None => Err(ParserError::NoMatch),
+        }
+    }
+}
+
+pub struct TagNameParser<'a> {
+    captures: Option<Captures<'a>>,
+}
+
+impl<'a> TagNameParser<'a> {
+    pub fn new<T: AsRef<str> + ?Sized>(haystack: &'a T) -> Self {
+        let captures_option = XML_TAG_NAME.get_regex().captures(haystack.as_ref());
+        Self {
+            captures: captures_option,
+        }
+    }
+
+    pub fn capture<T: AsRef<str> + ?Sized>(&mut self, haystack: &'a T) {
+        self.captures = XML_TAG_NAME.get_regex().captures(haystack.as_ref());
+    }
+
+    pub fn is_capture(&self) -> bool {
+        self.captures.is_some()
+    }
+
+    pub fn get_name(&self) -> Result<&'a str, ParserError> {
+        match &self.captures {
+            Some(cap) => match cap.name(capture_name::NAME) {
+                Some(val) => Ok(val.as_str()),
+                None => Err(ParserError::NoGroupMatch),
+            },
+            None => Err(ParserError::NoMatch),
+        }
+    }
+
+    pub fn get_namespace(&self) -> Result<&'a str, ParserError> {
+        match &self.captures {
+            Some(cap) => match cap.name(capture_name::NAMESPACE_NAME) {
+                Some(val) => Ok(val.as_str()),
+                None => Err(ParserError::NoGroupMatch),
             },
             None => Err(ParserError::NoMatch),
         }
@@ -112,6 +154,8 @@ pub struct ListParser<'a> {
 
 impl<'a> ListParser<'a> {
     /// A haystack containing a repeating element matching the group capture of Pattern.
+    /// The delimiter for the final element may be EOL. For example the delimiting
+    /// element for CSV is  (?:,|?)
     pub fn new(single_capture_pattern: &'a Pattern) -> Self {
         Self {
             pattern: single_capture_pattern,
@@ -149,9 +193,9 @@ impl<'a> ListParser<'a> {
 mod test {
 
     use crate::wicket::util::parse::metapattern::parsers::{
-        IntegerVariableAssignmentParser, ListParser, StringVariableAssignmentParser,
+        IntegerVariableAssignmentParser, ListParser, StringVariableAssignmentParser, TagNameParser,
     };
-    use crate::wicket::util::parse::metapattern::COMMA_SEPARATED_VARIABLE_PATTERN;
+    use crate::wicket::util::parse::metapattern::{get_tag_name_pattern, COMMA_SEPARATED_VARIABLE};
 
     #[test]
     fn string_vaiable_assignment_parser() {
@@ -174,7 +218,7 @@ mod test {
     }
     #[test]
     fn list_parser() {
-        let parser = ListParser::new(&COMMA_SEPARATED_VARIABLE_PATTERN);
+        let parser = ListParser::new(&COMMA_SEPARATED_VARIABLE);
 
         let vec = parser.get_match_slices("a,b,c");
         assert!(vec.is_ok());
@@ -182,5 +226,30 @@ mod test {
         let vec = parser.get_match_slices("a,b,c,");
         assert!(vec.is_ok());
         assert_eq!(vec.unwrap(), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn tag_parser() {
+        println!("regex:{}", get_tag_name_pattern());
+        let tag = "name";
+        let mut parser = TagNameParser::new(&tag);
+        assert!(parser.is_capture());
+        assert_eq!(&tag, &(parser.get_name().unwrap()));
+        assert!(parser.get_namespace().is_err());
+
+        let tag = "namespace:name";
+        parser.capture(tag);
+        assert!(parser.is_capture());
+        assert_eq!(&"name", &(parser.get_name().unwrap()));
+        assert_eq!(&"namespace", &(parser.get_namespace().unwrap()));
+
+        let tag = "namespace:";
+        parser.capture(&tag);
+        assert!(!parser.is_capture());
+
+        // leading : is allowed according to https://www.w3.org/TR/REC-xml/#NT-NameStartChar
+        let tag = ":names";
+        parser.capture(tag);
+        assert!(parser.is_capture());
     }
 }

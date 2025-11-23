@@ -91,6 +91,7 @@ static_pattern_owned!(
     COMMA_SEPARATED_VARIABLE,
     get_comma_separated_variable_pattern()
 );
+static_pattern_owned!(XML_TAG_NAME, get_tag_name_pattern());
 
 pub struct Pattern {
     source: Cow<'static, str>,
@@ -179,6 +180,8 @@ pub enum ParserError {
     /// Indicates that the current pattern didn't match.
     #[error("No match found")]
     NoMatch,
+    #[error("No match on group found")]
+    NoGroupMatch,
     #[error("Input was not a valid integer: {0}")]
     ParseIntError(#[from] ParseIntError),
 }
@@ -195,6 +198,8 @@ pub struct RegexFlags {
 pub mod capture_name {
     pub static KEY: &str = "key";
     pub static VALUE: &str = "value";
+    pub static NAMESPACE_NAME: &str = "namespace_name";
+    pub static NAME: &str = "name";
 }
 
 // Variable assignment pattern build.
@@ -249,15 +254,15 @@ pub fn get_variable_assignment_pattern<T: AsRef<str>>(value_pattern_opt: Option<
     full_key_value_assignment_pattern
 }
 
-// Integer assignment pattern build.
-
+/// Integer assignment pattern build.
 /// Parses integer variable assignments, such as "x = 9" or "x=9".
+/// Uses named groups 'key' and 'value'
 pub fn get_integer_assignment_pattern() -> String {
-    let variable_group_pattern = String::with_capacity(100)
+    let variable_group_pattern = String::with_capacity(60)
         .append_pattern(VARIABLE_NAME.as_str())
         .capture_group_named(capture_name::KEY);
     let value_group_pattern =
-        String::with_capacity(100).append_named_capture(INTEGER.as_str(), capture_name::VALUE);
+        String::with_capacity(20).append_named_capture(INTEGER.as_str(), capture_name::VALUE);
 
     let pattern = variable_group_pattern
         .append_pattern(OPTIONAL_WHITESPACE.as_str())
@@ -266,9 +271,10 @@ pub fn get_integer_assignment_pattern() -> String {
         .append_pattern(value_group_pattern);
     pattern
 }
-/// Comma separated variable list pattern.
+
+/// Comma separated variable list pattern using capture group 1 for the variable.
 pub fn get_comma_separated_variable_pattern() -> String {
-    String::with_capacity(10)
+    String::with_capacity(50)
         .append_pattern(OPTIONAL_WHITESPACE.as_str())
         .append_pattern(STRING.to_string().capture_group_unnamed())
         .append_pattern(OPTIONAL_WHITESPACE.as_str())
@@ -278,6 +284,26 @@ pub fn get_comma_separated_variable_pattern() -> String {
                 .append_pattern(",|$")
                 .make_pattern_group(),
         )
+}
+
+pub fn get_tag_name_pattern() -> String {
+    let namespace_group: String = VARIABLE_NAME
+        .to_string()
+        .capture_group_named(capture_name::NAMESPACE_NAME);
+    let name_group: String = XML_ELEMENT_NAME
+        .to_string()
+        .capture_group_named(capture_name::NAME);
+    let mut regex = String::with_capacity(100)
+        .append_pattern(
+            namespace_group
+                .append_pattern(COLON.as_str())
+                .make_pattern_optional(),
+        )
+        .append_pattern(name_group)
+        .make_pattern_group();
+    // Anchor start and end so we do not match on foo:
+    regex.insert(0, '^');
+    regex.append_pattern("$")
 }
 
 #[cfg(test)]
