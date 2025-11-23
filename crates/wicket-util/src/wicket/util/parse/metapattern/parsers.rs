@@ -2,6 +2,7 @@ use regex::Captures;
 
 use crate::wicket::util::parse::metapattern::capture_name;
 use crate::wicket::util::parse::metapattern::ParserError;
+use crate::wicket::util::parse::metapattern::Pattern;
 use crate::wicket::util::parse::metapattern::INTEGER_VARIABLE_ASSIGNMENT;
 use crate::wicket::util::parse::metapattern::STRING_VARIABLE_ASSIGNMENT;
 
@@ -105,12 +106,52 @@ impl<'a> IntegerVariableAssignmentParser<'a> {
     }
 }
 
+pub struct ListParser<'a> {
+    pattern: &'a Pattern,
+}
+
+impl<'a> ListParser<'a> {
+    /// A haystack containing a repeating element matching the group capture of Pattern.
+    pub fn new(single_capture_pattern: &'a Pattern) -> Self {
+        Self {
+            pattern: single_capture_pattern,
+        }
+    }
+
+    pub fn get_matches<T: AsRef<str> + ?Sized>(
+        &self,
+        haystack: &'a T,
+    ) -> Result<Vec<String>, ParserError> {
+        Ok(self
+            .pattern
+            .get_regex()
+            .captures_iter(haystack.as_ref())
+            .filter_map(|cap| cap.get(1))
+            .map(|m| m.as_str().to_owned())
+            .collect::<Vec<String>>())
+    }
+
+    pub fn get_match_slices<'h, T: AsRef<str> + ?Sized>(
+        &self,
+        haystack: &'h T,
+    ) -> Result<Vec<&'h str>, ParserError> {
+        Ok(self
+            .pattern
+            .get_regex()
+            .captures_iter(haystack.as_ref())
+            .filter_map(|cap| cap.get(1))
+            .map(|m| m.as_str())
+            .collect::<Vec<&'h str>>())
+    }
+}
+
 #[cfg(test)]
 mod test {
 
     use crate::wicket::util::parse::metapattern::parsers::{
-        IntegerVariableAssignmentParser, StringVariableAssignmentParser,
+        IntegerVariableAssignmentParser, ListParser, StringVariableAssignmentParser,
     };
+    use crate::wicket::util::parse::metapattern::COMMA_SEPARATED_VARIABLE_PATTERN;
 
     #[test]
     fn string_vaiable_assignment_parser() {
@@ -130,5 +171,16 @@ mod test {
         parser.capture("foo = 9");
         assert_eq!(parser.get_key().unwrap(), "foo");
         assert_eq!(parser.get_int_value().unwrap(), 9);
+    }
+    #[test]
+    fn list_parser() {
+        let parser = ListParser::new(&COMMA_SEPARATED_VARIABLE_PATTERN);
+
+        let vec = parser.get_match_slices("a,b,c");
+        assert!(vec.is_ok());
+        assert_eq!(vec.unwrap(), vec!["a", "b", "c"]);
+        let vec = parser.get_match_slices("a,b,c,");
+        assert!(vec.is_ok());
+        assert_eq!(vec.unwrap(), vec!["a", "b", "c"]);
     }
 }

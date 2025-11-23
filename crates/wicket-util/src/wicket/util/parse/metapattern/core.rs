@@ -88,6 +88,10 @@ pub static STRING_VARIABLE_ASSIGNMENT: Lazy<Pattern> =
 pub static INTEGER_VARIABLE_ASSIGNMENT: Lazy<Pattern> =
     Lazy::new(|| Pattern::new(Cow::Owned(get_integer_assignment_pattern())));
 
+/// Uses group 1
+pub static COMMA_SEPARATED_VARIABLE_PATTERN: Lazy<Pattern> =
+    Lazy::new(|| Pattern::new(Cow::Owned(get_comma_separated_variable_pattern())));
+
 pub struct Pattern {
     source: Cow<'static, str>,
     regex: Regex,
@@ -260,6 +264,19 @@ pub fn get_integer_assignment_pattern() -> String {
         .append_pattern(OPTIONAL_WHITESPACE.as_str())
         .append_pattern(value_group_pattern);
     pattern
+}
+/// Comma separated variable list pattern.
+pub fn get_comma_separated_variable_pattern() -> String {
+    String::with_capacity(10)
+        .append_pattern(OPTIONAL_WHITESPACE.as_str())
+        .append_pattern(STRING.to_string().capture_group_unnamed())
+        .append_pattern(OPTIONAL_WHITESPACE.as_str())
+        .append_pattern(
+            // Ending with a comma or end of line.
+            String::with_capacity(6)
+                .append_pattern(",|$")
+                .make_pattern_group(),
+        )
 }
 
 #[cfg(test)]
