@@ -27,10 +27,25 @@ impl<'a> StringVariableAssignmentParser<'a> {
             .captures(haystack.as_ref());
     }
 
+    // TODO: Move to trait
     pub fn is_capture(&self) -> bool {
         self.captures.is_some()
     }
 
+    // TODO: Move to trait
+    // The byte index of the capture end point in the haystack.
+    pub fn end(&self) -> usize {
+        match &self.captures {
+            Some(cap) => cap.get_match().end(),
+            None => 0,
+        }
+    }
+
+    // TODO: Write a function taking a closure for working with captures_iter() and exposing the
+    // parser functions in the closure. This is currently achieved by stepping through
+    // the haystack with end() but is not efficient compared with captures_iter().
+
+    /// Get the capture_name::KEY
     pub fn get_key(&self) -> Result<&'a str, ParserError> {
         match &self.captures {
             Some(cap) => match cap.name(capture_name::KEY) {
@@ -41,6 +56,7 @@ impl<'a> StringVariableAssignmentParser<'a> {
         }
     }
 
+    /// Get the capture_name::VALUE
     pub fn get_value(&self) -> Result<&'a str, ParserError> {
         match &self.captures {
             Some(cap) => match cap.name(capture_name::VALUE) {
@@ -74,6 +90,13 @@ impl<'a> IntegerVariableAssignmentParser<'a> {
 
     pub fn is_capture(&self) -> bool {
         self.captures.is_some()
+    }
+
+    pub fn end(&self) -> usize {
+        match &self.captures {
+            Some(cap) => cap.get_match().end(),
+            None => 0,
+        }
     }
 
     pub fn get_key(&self) -> Result<&'a str, ParserError> {
@@ -125,6 +148,13 @@ impl<'a> TagNameParser<'a> {
 
     pub fn is_capture(&self) -> bool {
         self.captures.is_some()
+    }
+
+    pub fn end(&self) -> usize {
+        match &self.captures {
+            Some(cap) => cap.get_match().end(),
+            None => 0,
+        }
     }
 
     pub fn get_name(&self) -> Result<&'a str, ParserError> {

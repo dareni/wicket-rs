@@ -1,6 +1,8 @@
 use std::io::{self, Read};
 use thiserror::Error;
 
+use crate::wicket::util::parse::metapattern::ParserError;
+
 /// This is not a reader like e.g. FileReader. It rather reads the whole data until the end from a
 /// source reader into memory and provides convenient methods for navigation and searching.
 pub struct FullyBufferedReader {
@@ -67,6 +69,38 @@ pub enum ParseException {
         column: usize,
         position: usize,
     },
+    #[error("Tag not closed at (line {line}, column {column}) at position {position}.")]
+    TagNotClosed {
+        line: usize,
+        column: usize,
+        position: usize,
+    },
+    #[error("Tag end text error at (line {line}, column {column}) at position {position}.")]
+    TagEndTextError {
+        line: usize,
+        column: usize,
+        position: usize,
+    },
+    #[error("Error obtaining last text at (line {line}, column {column}) at position {position}.")]
+    LastTextError {
+        line: usize,
+        column: usize,
+        position: usize,
+    },
+    #[error("Skip tag not closed at (line {line}, column {column}) at position {position}.")]
+    SkipTagNotClosed {
+        line: usize,
+        column: usize,
+        position: usize,
+    },
+    #[error("Attribute (key:{tag_key} value:{tag_value}) already exists at (line {line}, column {column}) at position {position}.")]
+    AttributeExists {
+        line: usize,
+        column: usize,
+        position: usize,
+        tag_key: String,
+        tag_value: String,
+    },
 
     #[error("No open bracket index while finding a tag/body at position {0}")]
     NoOpenBracketIndexFindingTag(usize),
@@ -88,6 +122,8 @@ pub enum ParseException {
     },
     #[error("No text for special tag position {0}.")]
     NoSpecialTagText(usize),
+    #[error("Parser pattern group error: {0}")]
+    ParseGroupPattern(#[from] ParserError),
 }
 
 impl FullyBufferedReader {
@@ -104,16 +140,16 @@ impl FullyBufferedReader {
     }
 
     /// Construct a `FullyBufferedReader` from the `input` string.
-    pub fn new_from_string(input: String) -> Self {
+    pub fn new_from_string<T: Into<String>>(input: T) -> Self {
         Self {
-            input,
+            input: input.into(),
             ..Self::default()
         }
     }
 
     /// Get the characters from the internal position marker to `toPos`.
     /// Set `toPos` as the byte index of the last utf8 character non inclusive.
-    /// If `toPos`` > 0, then get all data from the position marker to the end.
+    /// If `toPos`` is None, then get all data from the position marker to the end.
     /// If `toPos`` is less than the position marker then return an empty string.
     /// A string of raw markup in between these to two positions is returned.
     pub fn get_substring_from_position_marker(&self, to_pos: Option<usize>) -> &str {
@@ -130,23 +166,27 @@ impl FullyBufferedReader {
         self.input.get(from_pos..to_pos)
     }
 
-    //Get the current input buffer position.
+    pub fn get_substring_from(&self, from_pos: usize) -> Option<&str> {
+        self.input.get(from_pos..)
+    }
+
+    /// Get the current input buffer position.
     pub fn get_position(&self) -> usize {
         self.input_position
     }
 
-    // Store the current position in markup.
+    /// Store the current position in markup.
     pub fn set_position_marker(&mut self, pos: usize) {
         self.position_marker = pos;
     }
 
-    // @return The markup to be parsed.
+    /// @return The markup to be parsed.
     pub fn to_string(&self) -> &str {
         &self.input
     }
 
-    // Counts lines starting where we last left off up to the index provided.
-    // `end` must be the byte index to a utf8 char.
+    /// Counts lines starting where we last left off up to the index provided.
+    /// `end` must be the byte index to a utf8 char.
     pub fn count_lines_to(&mut self, end: usize) {
         let input_slice = &self.input[self.last_line_count_index..end];
         let sl = input_slice.chars();
@@ -186,15 +226,15 @@ impl FullyBufferedReader {
             .map(|i| i + self.input_position)
     }
 
-    // Find the string starting at the position provided.
+    /// Find the string starting at the position provided.
     pub fn find_str_at(&self, strg: &str, start_pos: usize) -> Option<usize> {
         self.input[start_pos..].find(strg).map(|i| i + start_pos)
     }
 
-    // Find a char starting at the position provided. The char must not be
-    // inside a quoted string.  (single or double)
-    // @param quotationChar The current quotation char. Must be ' or ",
-    // otherwise will be ignored.
+    /// Find a char starting at the position provided. The char must not be
+    /// inside a quoted string.  (single or double)
+    /// @param quotationChar The current quotation char. Must be ' or ",
+    /// otherwise will be ignored.
     pub fn find_out_of_quotes(
         &mut self,
         ch: char,
@@ -259,15 +299,15 @@ impl FullyBufferedReader {
         self.line_number
     }
 
-    // Get the number of character read from the source resource. The whole
-    // content, not just until the current position.
+    /// Get the number of character read from the source resource. The whole
+    /// content, not just until the current position.
     pub fn size(&self) -> usize {
         self.input.len()
     }
 
-    // Get the character at the position provided.
-    // @param pos The position.
-    // @return char at position.
+    /// Get the character at the position provided.
+    /// @param pos The position.
+    /// @return char at position.
     pub fn char_at(&self, pos: usize) -> char {
         self.input.as_bytes()[pos] as char
     }

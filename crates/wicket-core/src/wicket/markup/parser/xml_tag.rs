@@ -42,8 +42,8 @@ pub struct XmlTag {
     // ---- immutable core data -------------------------------------------------
     text: Option<Rc<TextSegment>>, // `None` after `make_immutable`
     tag_type: TagType,
-    name: Rc<str>,
-    namespace: Option<Rc<str>>,
+    pub name: Rc<str>,
+    pub namespace: Option<Rc<str>>,
 
     // ---- mutable state -------------------------------------------------------
     attributes: HashMap<Rc<str>, Rc<str>>, // attribute map (String → String)
