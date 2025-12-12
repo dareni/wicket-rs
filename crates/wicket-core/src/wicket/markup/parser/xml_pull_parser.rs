@@ -1,8 +1,6 @@
-#![allow(unused)]
-
-use std::{cmp::Ordering, ops::Deref};
+//#![allow(unused)]
+use std::ops::Deref;
 use std::{io::Read, rc::Rc};
-use thiserror::Error;
 
 use wicket_util::wicket::util::collections::io::fully_buffered_reader::{
     FullyBufferedReader, ParseException,
@@ -10,7 +8,6 @@ use wicket_util::wicket::util::collections::io::fully_buffered_reader::{
 use wicket_util::wicket::util::parse::metapattern::parsers::{
     StringVariableAssignmentParser, TagNameParser,
 };
-use wicket_util::wicket::util::parse::metapattern::ParserError;
 use wicket_util::wicket::util::string::strings::unescape_markup;
 
 use super::xml_tag::{TagType, TextSegment, XmlTag};
@@ -20,14 +17,14 @@ static SCRIPT: &str = "script";
 static DEFAULT_BUFFER: &str = "";
 
 #[derive(PartialEq)]
-enum SkipType {
+pub enum SkipType {
     Style,
     Script,
     Text(String),
     None,
 }
 impl SkipType {
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         match self {
             Self::Style => STYLE.len(),
             Self::Script => SCRIPT.len(),
@@ -36,7 +33,11 @@ impl SkipType {
         }
     }
 
-    fn get_text(&self) -> &str {
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::None)
+    }
+
+    pub fn get_text(&self) -> &str {
         match self {
             Self::Style => STYLE,
             Self::Script => SCRIPT,
@@ -46,7 +47,7 @@ impl SkipType {
     }
 }
 
-struct XmlPullParser {
+pub struct XmlPullParser {
     // Encoding of the xml.
     encoding: String,
     // A XML independent reader which loads the whole source data into memory
@@ -74,33 +75,37 @@ impl Default for XmlPullParser {
 }
 
 impl XmlPullParser {
-    fn parse_string(input: String) -> Self {
+    pub fn new(input: String) -> Self {
         Self {
             input: FullyBufferedReader::new_from_string(input),
             ..Default::default()
         }
     }
 
-    fn parse(input: impl Read) -> Result<Self, ParseException> {
+    pub fn parse_string(&mut self, input: String) {
+        self.input = FullyBufferedReader::new_from_string(input);
+    }
+
+    pub fn new_stream(input: impl Read) -> Result<Self, ParseException> {
         Ok(Self {
             input: FullyBufferedReader::new(input)?,
             ..Default::default()
         })
     }
 
-    fn get_encoding(&self) -> &str {
+    pub fn get_encoding(&self) -> &str {
         self.encoding.as_str()
     }
 
-    fn get_doctype(&self) -> Option<&str> {
+    pub fn get_doctype(&self) -> Option<&str> {
         self.doc_type.as_deref()
     }
 
-    fn get_input_from_position_marker(&self, to_pos: usize) -> &str {
+    pub fn get_input_from_position_marker(&self, to_pos: usize) -> &str {
         self.input.get_substring_from_position_marker(Some(to_pos))
     }
 
-    fn get_input(&self, from_pos: usize, to_pos: usize) -> Option<&str> {
+    pub fn get_input(&self, from_pos: usize, to_pos: usize) -> Option<&str> {
         self.input.get_substring(from_pos, to_pos)
     }
 
@@ -137,7 +142,11 @@ impl XmlPullParser {
                     position: start_index,
                 })?
                 .to_string();
-            if self.skip_until_text.get_text().to_lowercase() == end_tag_text.to_lowercase() {
+            if self
+                .skip_until_text
+                .get_text()
+                .eq_ignore_ascii_case(&end_tag_text)
+            {
                 break;
             }
         }
@@ -154,7 +163,7 @@ impl XmlPullParser {
         self.last_type = HttpTagType::Body;
 
         // Check the tag is properly closed
-        last_pos = self
+        _ = self
             .input
             .find_char_at('>', last_pos + tag_name_len)
             .ok_or_else(|| ParseException::SkipTagNotClosed {
@@ -166,7 +175,7 @@ impl XmlPullParser {
         Ok(())
     }
 
-    fn get_line_and_column_text(&self) -> String {
+    pub fn get_line_and_column_text(&self) -> String {
         format!(
             " (line {} , column  {})",
             self.input.get_line_number(),
@@ -174,15 +183,15 @@ impl XmlPullParser {
         )
     }
 
-    fn next(&mut self) -> Result<&HttpTagType, ParseException> {
+    pub fn next_iteration(&mut self) -> Result<HttpTagType, ParseException> {
         //Reached end of markup file?
         if self.input.get_position() == self.input.size() {
-            return Ok(&HttpTagType::NotInitialized);
+            return Ok(HttpTagType::NotInitialized);
         }
 
         if self.skip_until_text != SkipType::None {
             //TODO self.skip_until();
-            return Ok(&self.last_type);
+            return Ok(self.last_type);
         }
 
         //Any more tags in the markup?
@@ -201,6 +210,7 @@ impl XmlPullParser {
                 }
                 self.input.set_position(self.input.size());
                 self.last_type = HttpTagType::Body;
+                return Ok(HttpTagType::Body);
             }
             let text = self
                 .input
@@ -215,22 +225,26 @@ impl XmlPullParser {
                 Some(x) => self.input.set_position(x),
             }
             self.last_type = HttpTagType::Body;
-            return Ok(&self.last_type);
+            return Ok(self.last_type);
         }
 
         // Determine the line number
-        match open_bracket_index {
+        let open_bracket_i = match open_bracket_index {
             None => {
                 return Err(ParseException::NoOpenBracketIndexSettingLineNo(
                     self.input.get_position(),
                 ))
             }
-            Some(x) => self.input.count_lines_to(x),
-        }
+            // Some(x) => {self.input.count_lines_to(x);
+            Some(x) => {
+                self.input.count_lines_to(x);
+                x
+            }
+        };
 
-        let open_bracket_i = open_bracket_index.ok_or_else(|| {
-            ParseException::NoOpenBracketIndexGettingTagText(self.input.get_position())
-        })?;
+        // let open_bracket_i = open_bracket_index.ok_or_else(|| {
+        // ParseException::NoOpenBracketIndexGettingTagText(self.input.get_position())
+        // })?;
 
         // Get index of closing tag and advance past the tag
         let mut close_bracket_index: Option<usize> = None;
@@ -251,61 +265,57 @@ impl XmlPullParser {
                 position: self.input.get_position(),
             })?;
 
-        // Get the complete tag text
-        self.last_text = self
+        let full_tag_ref = self
             .input
             .get_substring(open_bracket_i, close_bracket_i + 1)
-            .map(Rc::from);
+            .unwrap_or_else(|| unreachable!());
+
+        let rc_ref: Rc<str> = Rc::from(full_tag_ref);
+        self.last_text = Some(rc_ref.clone());
 
         // Get the tagtext between open and close brackets
-        let mut tag_text;
-        if let Some(last_t) = &self.last_text {
-            tag_text = last_t[0..last_t.len() - 1].to_string();
-            if tag_text.is_empty() {
-                return Err(ParseException::EmptyTag {
-                    line: self.input.get_line_number(),
-                    column: self.input.get_column_number(),
-                    position: self.input.get_position(),
-                });
-            }
-        } else {
-            unreachable!()
+        let full_tag_len = rc_ref.len();
+        let mut tag_slice: &str = rc_ref[1..full_tag_len - 1].as_ref();
+
+        if tag_slice.is_empty() {
+            return Err(ParseException::EmptyTag {
+                line: self.input.get_line_number(),
+                column: self.input.get_column_number(),
+                position: self.input.get_position(),
+            });
         }
 
         // Type of the tag, to be determined next
         let tag_type: TagType;
 
-        if tag_text.ends_with("/") {
+        if tag_slice.ends_with("/") {
             // If the tag ends in '/', it's a "simple" tag like <foo/>
             tag_type = TagType::OpenClose;
-            tag_text = tag_text[0..tag_text.len()].to_string();
-        } else if tag_text.starts_with("/") {
+            tag_slice = &tag_slice[0..tag_slice.len() - 1];
+        } else if tag_slice.starts_with("/") {
             // The tag text starts with a '/', it's a simple close tag
             tag_type = TagType::Close;
-            tag_text = tag_text[1..].to_string();
+            tag_slice = &tag_slice[1..];
         } else {
             // It must be an open tag
             tag_type = TagType::Open;
             // If open tag and starts with "s" like "script" or "style", than ...
-            if tag_text.len() > STYLE.len() && tag_text.starts_with('s')
-                || tag_text.starts_with('S')
-            {
-                let lower_case = tag_text.to_lowercase();
+            if tag_slice.len() > STYLE.len() && tag_slice[0..1].eq_ignore_ascii_case("s") {
+                let lower_case = tag_slice.to_lowercase();
                 if lower_case.starts_with(SCRIPT) {
                     // where the type attribute is missing or
                     // where type attribute is text/javascript or importmap or module
                     self.skip_until_text = SkipType::Script;
-                } else if (lower_case.starts_with(STYLE)) {
+                } else if lower_case.starts_with(STYLE) {
                     self.skip_until_text = SkipType::Style;
                 }
             }
         }
 
         // Handle special tags like <!-- and <![CDATA ...
-        let first_char = tag_text.chars().next();
+        let first_char = tag_slice.chars().next();
         if first_char.is_some_and(|ch| ch == '!' || ch == '?') {
-            self.special_tag_handling(tag_text.as_str(), open_bracket_i, close_bracket_i);
-            self.input.count_lines_to(open_bracket_i);
+            self.special_tag_handling(tag_slice, open_bracket_i, close_bracket_i)?;
 
             let text_opt: Option<Rc<str>> = self.last_text.as_ref().map(|v| Rc::from(v.deref()));
             let text = TextSegment::new(
@@ -315,7 +325,7 @@ impl XmlPullParser {
                 self.input.get_column_number(),
             );
             self.last_tag = Some(XmlTag::with_text(text, tag_type));
-            return Ok(&self.last_type);
+            return Ok(self.last_type);
         }
 
         let text_opt: Option<Rc<str>> = self.last_text.as_ref().map(|v| Rc::from(v.deref()));
@@ -328,22 +338,19 @@ impl XmlPullParser {
         let mut tmp_last_tag = XmlTag::with_text(text, tag_type);
 
         // Parse the tag text and populate tag attributes
-        if self.parse_tag_text(&mut tmp_last_tag, &tag_text)? {
+        if self.parse_tag_text(&mut tmp_last_tag, tag_slice)? {
             // Move to position after the tag
             self.input.set_position(close_bracket_i + 1);
             self.last_type = HttpTagType::Tag;
             self.last_tag = Some(tmp_last_tag);
-            return Ok(&self.last_type);
+            Ok(self.last_type)
         } else {
-            return Err(ParseException::MalformedTag {
+            Err(ParseException::MalformedTag {
                 line: self.input.get_line_number(),
                 column: self.input.get_column_number(),
                 position: self.input.get_position(),
-            });
+            })
         }
-        self.last_tag = Some(tmp_last_tag);
-
-        Ok(&HttpTagType::Tag)
     }
 
     /// Handle special tags like &lt;!-- --&gt; or &lt;![CDATA[..]]&gt; or &lt;?xml&gt;
@@ -375,7 +382,7 @@ impl XmlPullParser {
                 self.last_text = self
                     .input
                     .get_substring(open_bracket_index, pos)
-                    .map(|s| Rc::from(s.to_string().into_boxed_str()));
+                    .map(Rc::from);
 
                 // Actually it is no longer a comment. It is now
                 // up to the browser to select the section appropriate.
@@ -398,7 +405,7 @@ impl XmlPullParser {
                 self.last_text = self
                     .input
                     .get_substring(open_bracket_index, pos)
-                    .map(|s| s.to_string().into_boxed_str().into());
+                    .map(Rc::from);
                 self.last_type = HttpTagType::Comment;
                 self.input.set_position(pos);
             }
@@ -414,41 +421,34 @@ impl XmlPullParser {
         }
         // CDATA sections might contain "<" which is not part of an XML tag.
         // Make sure escaped "<" are treated right
-        if tag_text.starts_with("![") {
-            let start_text = if tag_text.chars().count() <= 8 {
-                tag_text
-            } else {
-                &tag_text.chars().take(8).collect::<String>()
-            };
-            if start_text.to_uppercase() == "![CDATA[" {
-                let mut pos1 = open_bracket_index;
-                let mut tmp_tag_text: &str;
-                loop {
-                    // Get index of closing tag and advance past the tag
-                    close_bracket_index = self.find_char('>', pos1).ok_or_else(|| {
-                        ParseException::NoCloseBracketIndex {
-                            line: self.input.get_line_number(),
-                            column: self.input.get_column_number(),
-                            position: self.input.get_position(),
-                        }
-                    })?;
-                    // Get the tagtext between open and close brackets
-                    tmp_tag_text = self
-                        .input
-                        .get_substring(open_bracket_index + 1, close_bracket_index)
-                        .ok_or_else(|| ParseException::NoSpecialTagText(open_bracket_index + 1))?;
-
-                    pos1 = close_bracket_index + 1;
-                    if tmp_tag_text.ends_with("]]") {
-                        break;
+        if tag_text.starts_with("![CDATA[") {
+            let mut pos1 = open_bracket_index;
+            let mut tmp_tag_text: &str;
+            loop {
+                // Get index of closing tag and advance past the tag
+                close_bracket_index = self.find_char('>', pos1).ok_or_else(|| {
+                    ParseException::NoCloseBracketIndex {
+                        line: self.input.get_line_number(),
+                        column: self.input.get_column_number(),
+                        position: self.input.get_position(),
                     }
+                })?;
+                // Get the tagtext between open and close brackets
+                tmp_tag_text = self
+                    .input
+                    .get_substring(open_bracket_index + 1, close_bracket_index)
+                    .ok_or_else(|| ParseException::NoSpecialTagText(open_bracket_index + 1))?;
+
+                pos1 = close_bracket_index + 1;
+                if tmp_tag_text.ends_with("]]") {
+                    break;
                 }
-                // Move to position after the tag
-                self.last_text = Some(Rc::from(tmp_tag_text));
-                self.last_type = HttpTagType::Cdata;
-                self.input.set_position(close_bracket_index + 1);
-                return Ok(());
             }
+            // Move to position after the tag
+            self.last_text = Some(Rc::from(tmp_tag_text));
+            self.last_type = HttpTagType::Cdata;
+            self.input.set_position(close_bracket_index + 1);
+            return Ok(());
         }
         if tag_text.starts_with('?') {
             self.last_type = HttpTagType::ProcessingInstruction;
@@ -472,17 +472,17 @@ impl XmlPullParser {
     }
 
     /// Take the XmlTag.
-    fn get_element(&mut self) -> Option<XmlTag> {
+    pub fn get_element(&mut self) -> Option<XmlTag> {
         self.last_tag.take()
     }
 
-    fn get_string(&self) -> Option<&str> {
+    pub fn get_string(&self) -> Option<&str> {
         self.last_text.as_deref()
     }
 
     /// Take the next XmlTag.
-    fn next_tag(&mut self) -> Result<Option<XmlTag>, ParseException> {
-        while (*(self.next()?) != HttpTagType::NotInitialized) {
+    pub fn next_tag(&mut self) -> Result<Option<XmlTag>, ParseException> {
+        while self.next_iteration()? != HttpTagType::NotInitialized {
             if self.last_type == HttpTagType::Tag {
                 return Ok(self.last_tag.take());
             }
@@ -499,12 +499,7 @@ impl XmlPullParser {
 
         // We use char_indices to get both the byte index and the character,
         // and we skip characters up to the starting byte index.
-        for (index, char_at) in self
-            .input
-            .get_substring_from(start_index)?
-            .char_indices()
-            .skip_while(|(i, _)| *i < start_index)
-        {
+        for (index, char_at) in self.input.get_substring_from(start_index)?.char_indices() {
             match quote {
                 // Inside a quote: Check if we've found the closing quote
                 Some(q) if q == char_at => {
@@ -517,7 +512,7 @@ impl XmlPullParser {
                     if char_at == '"' || char_at == '\'' {
                         quote = Some(char_at);
                     } else if char_at == ch {
-                        return Some(index); // Found the character!
+                        return Some(index + start_index); // Found the character!
                     }
                 }
             }
@@ -526,15 +521,15 @@ impl XmlPullParser {
         None
     }
 
-    fn set_position_marker_default(&mut self) {
+    pub fn set_position_marker_default(&mut self) {
         self.input.set_position_marker(self.input.get_position());
     }
 
-    fn set_position_marker(&mut self, pos: usize) {
+    pub fn set_position_marker(&mut self, pos: usize) {
         self.input.set_position_marker(pos);
     }
 
-    fn to_string(&self) -> &str {
+    pub fn to_string(&self) -> &str {
         self.input.to_string()
     }
 
@@ -605,14 +600,13 @@ impl XmlPullParser {
                     return Ok(true);
                 }
             }
-            return Ok(true);
         }
         Ok(false)
     }
 }
 
-#[derive(PartialEq)]
-enum HttpTagType {
+#[derive(PartialEq, Clone, Copy)]
+pub enum HttpTagType {
     // next() must be called at least once for the Type to be valid
     NotInitialized,
 
@@ -650,8 +644,8 @@ mod test {
 
     #[test]
     pub fn basics() {
-        let mut parser = XmlPullParser::parse_string("This is text".to_owned());
-        let elem = &parser.next_tag();
-        assert!(elem.is_err());
+        let mut parser = XmlPullParser::new("This is text".to_owned());
+        let elem = parser.next_tag();
+        assert!(elem.is_ok_and(|o| o.is_none()));
     }
 }
