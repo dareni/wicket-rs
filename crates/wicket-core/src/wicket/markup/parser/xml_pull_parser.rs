@@ -84,6 +84,7 @@ impl XmlPullParser {
 
     pub fn parse_string(&mut self, input: String) {
         self.input = FullyBufferedReader::new_from_string(input);
+        Self::default();
     }
 
     pub fn new_stream(input: impl Read) -> Result<Self, ParseException> {
@@ -190,7 +191,7 @@ impl XmlPullParser {
         }
 
         if self.skip_until_text != SkipType::None {
-            //TODO self.skip_until();
+            self.skip_until()?;
             return Ok(self.last_type);
         }
 
@@ -542,7 +543,7 @@ impl XmlPullParser {
         if tag_name_parser.is_capture() {
             //Extract the tag from the pattern matcher
             tag.name = Rc::from(tag_name_parser.get_name()?);
-            tag.namespace = Some(Rc::from(tag_name_parser.get_namespace()?));
+            tag.namespace = tag_name_parser.get_namespace().ok().map(|n| n.into());
 
             // Are we at the end? Then there are no attributes, so we just
             // return the tag
@@ -645,7 +646,70 @@ mod test {
     #[test]
     pub fn basics() {
         let mut parser = XmlPullParser::new("This is text".to_owned());
-        let elem = parser.next_tag();
-        assert!(elem.is_ok_and(|o| o.is_none()));
+        let tag = parser.next_tag();
+        assert!(tag.is_ok_and(|o| o.is_none()));
+
+        parser.parse_string("<tag/>".to_owned());
+        let mut tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open_close());
+        assert_eq!("tag", tag.name());
+        assert!(tag.namespace().is_none());
+        assert!(!tag.has_attributes());
+
+        // extra spaces
+        parser.parse_string("<tag ></tag >".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("tag", tag.name());
+        assert!(tag.namespace().is_none());
+        assert!(!tag.has_attributes());
+
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_close());
+        assert_eq!("tag", tag.name());
+        assert!(tag.namespace().is_none());
+        assert!(!tag.has_attributes());
+
+        parser.parse_string("<tag> </tag>".to_owned());
+        _ = parser.next_tag();
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_close());
+
+        parser.parse_string("xx <tag> yy </tag> zz".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("tag", tag.name());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_close());
+        assert_eq!("tag", tag.name());
+
+        // XmlPullParser does NOT check that tags get properly closed
+        parser.parse_string("<tag>".to_owned());
+        _ = parser.next_tag();
+        assert!(parser.next_tag().unwrap().is_none());
+
+        parser.parse_string("<tag> <tag> <tag>".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+
+        parser.parse_string("<ns:tag/>".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!("ns", tag.namespace().unwrap());
+        assert_eq!("tag", tag.name());
+        assert!(tag.is_open_close());
+
+        parser.parse_string("<ns:tag/></ns:tag>".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!("ns", tag.namespace().unwrap());
+        assert_eq!("tag", tag.name());
+        assert!(tag.is_open());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!("ns", tag.namespace().unwrap());
+        assert_eq!("tag", tag.name());
+        assert!(tag.is_close());
     }
 }

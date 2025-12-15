@@ -281,5 +281,9 @@ mod test {
         let tag = ":names";
         parser.capture(tag);
         assert!(parser.is_capture());
+
+        let tag = "tag ";
+        parser.capture(tag);
+        assert!(parser.is_capture())
     }
 }

@@ -303,7 +303,7 @@ pub fn get_tag_name_pattern() -> String {
         .make_pattern_group();
     // Anchor start and end so we do not match on foo:
     regex.insert(0, '^');
-    regex.append_pattern("$")
+    regex.append_pattern(r"\s*").append_pattern("$")
 }
 
 #[cfg(test)]
