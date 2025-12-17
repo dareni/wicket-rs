@@ -92,6 +92,11 @@ static_pattern_owned!(
     get_comma_separated_variable_pattern()
 );
 static_pattern_owned!(XML_TAG_NAME, get_tag_name_pattern());
+static_pattern!(XML_DECL, r"^<\?xml(\s+.*)?\?>");
+static_pattern!(
+    XML_ENCODING,
+    r#"\s+encoding\s*=\s*(["'](.*?)["']|(\S*)).*\?>"#
+);
 
 pub struct Pattern {
     source: Cow<'static, str>,
@@ -338,5 +343,32 @@ mod test {
         let captures = captures_opt.unwrap();
         assert_eq!(captures.name(capture_name::KEY).unwrap().as_str(), "foo");
         assert_eq!(captures.name(capture_name::VALUE).unwrap().as_str(), "9");
+    }
+
+    #[test]
+    fn xml_encoding() {
+        let pattern = &XML_ENCODING;
+        let mut captures_opt = pattern.get_regex().captures(r#"<?xml encoding="UTF-8" ?>"#);
+        assert!(captures_opt.is_some());
+        let mut cap = captures_opt.unwrap();
+        let mut val = cap.get(2).unwrap(); //Capture quoted encoding " or '
+        assert_eq!("UTF-8", val.as_str());
+
+        captures_opt = pattern.get_regex().captures(r#"<?xml encoding= UTF-8 ?>"#);
+        assert!(captures_opt.is_some());
+        cap = captures_opt.unwrap();
+        val = cap.get(3).unwrap(); //Capture unquoted encoding.
+        assert_eq!("UTF-8", val.as_str());
+
+        let pattern = &XML_DECL;
+        captures_opt = pattern.get_regex().captures(r#"<?xml encoding="UTF-8" ?>"#);
+        assert!(captures_opt.is_some());
+        val = captures_opt.unwrap().get_match();
+        assert_eq!(r#"<?xml encoding="UTF-8" ?>"#, val.as_str());
+
+        captures_opt = pattern
+            .get_regex()
+            .captures(r#" <?xml encoding="UTF-8" ?>"#);
+        assert!(captures_opt.is_none());
     }
 }

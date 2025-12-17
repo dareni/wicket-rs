@@ -124,13 +124,25 @@ pub enum ParseException {
     NoSpecialTagText(usize),
     #[error("Parser pattern group error: {0}")]
     ParseGroupPattern(#[from] ParserError),
+    #[error("Xml BOM {bom} encoding does not match xml encoding attribute {attribute}")]
+    XmlEncodingMismatch { bom: String, attribute: String },
+    #[error("Read stream error: {0}")]
+    ReadStreamError(#[from] std::io::Error),
+    #[error("Invalid xml: {0}")]
+    InvalidXml(#[from] std::str::Utf8Error),
+    #[error("No decoder for encoding: {encoding}")]
+    NoDecoder { encoding: String },
+    #[error(
+        "Invalid xml declaration: '<?xml' must occupy byte index 0 of the stream after the BOM."
+    )]
+    InvalidXmlDeclaration,
 }
 
 impl FullyBufferedReader {
     /// Read all the data from the `reader` into memory.
-    pub fn new(mut reader: impl Read) -> Result<Self, ParseException> {
+    pub fn new(mut utf8_reader: impl Read) -> Result<Self, ParseException> {
         let mut input = String::new();
-        reader
+        utf8_reader
             .read_to_string(&mut input)
             .map_err(|e| ParseException::IO { cause: e })?;
         Ok(Self {

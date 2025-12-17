@@ -1,4 +1,5 @@
 //#![allow(unused)]
+use std::io::Cursor;
 use std::ops::Deref;
 use std::{io::Read, rc::Rc};
 
@@ -8,6 +9,7 @@ use wicket_util::wicket::util::collections::io::fully_buffered_reader::{
 use wicket_util::wicket::util::parse::metapattern::parsers::{
     StringVariableAssignmentParser, TagNameParser,
 };
+use wicket_util::wicket::util::parse::metapattern::{XML_DECL, XML_ENCODING};
 use wicket_util::wicket::util::string::strings::unescape_markup;
 
 use super::xml_tag::{TagType, TextSegment, XmlTag};
@@ -82,14 +84,25 @@ impl XmlPullParser {
         }
     }
 
-    pub fn parse_string(&mut self, input: String) {
-        self.input = FullyBufferedReader::new_from_string(input);
-        Self::default();
-    }
+    pub fn new_stream(mut input: impl Read, input_size: usize) -> Result<Self, ParseException> {
+        let mut buffer = Vec::with_capacity(input_size);
+        input.read_to_end(&mut buffer)?;
+        let encoding_result = determine_encoding(&buffer)?;
+        let decoder_opt = encoding_rs::Encoding::for_label(encoding_result.encoding.as_bytes());
+        let decoder = decoder_opt.ok_or(ParseException::NoDecoder {
+            encoding: encoding_result.encoding.clone(),
+        })?;
+        // let decoded_cow = decoder.decode(&buffer[encoding_result.bom_len..]).0;
+        //
+        let decoded_result = decoder.decode(&buffer[encoding_result.bom_len..]);
+        let decoded_cow = decoded_result.0;
+        let st = decoded_result.1;
+        let encoding_name = st.name();
 
-    pub fn new_stream(input: impl Read) -> Result<Self, ParseException> {
+        let buf = Cursor::new(decoded_cow.as_bytes());
         Ok(Self {
-            input: FullyBufferedReader::new(input)?,
+            input: FullyBufferedReader::new(buf)?,
+            encoding: encoding_name.to_owned(),
             ..Default::default()
         })
     }
@@ -604,6 +617,100 @@ impl XmlPullParser {
         }
         Ok(false)
     }
+
+    pub fn determine_encoding(xml_head: &str) {
+        let _cap_opt = XML_ENCODING.get_regex().captures(xml_head);
+    }
+}
+
+pub struct EncodingResult {
+    pub encoding: String,
+    pub bom_len: usize,
+}
+
+pub fn determine_encoding(buffer: &[u8]) -> Result<EncodingResult, ParseException> {
+    static READ_AHEAD_SIZE: usize = 80;
+    let read_ahead = READ_AHEAD_SIZE.min(buffer.len());
+
+    //Assume a string less then 4 bytes is utf8.
+    let buf = match buffer.get(0..read_ahead) {
+        Some(x) if read_ahead >= 4 => x,
+        _ => {
+            return Ok(EncodingResult {
+                encoding: "utf-8".to_string(),
+                bom_len: 0,
+            })
+        }
+    };
+
+    let bom: &[u8] = buf.get(0..4).unwrap();
+
+    let result = match bom {
+        [0xFF, 0xFE, 0x00, 0x00] => EncodingResult {
+            encoding: "utf-32le".to_string(),
+            bom_len: 4,
+        },
+        [0x00, 0x00, 0xFE, 0xFF] => EncodingResult {
+            encoding: "utf-32be".to_string(),
+            bom_len: 4,
+        },
+
+        // --- 2. UTF-8 BOM (3 Bytes) ---
+        [0xEF, 0xBB, 0xBF, ..] => EncodingResult {
+            encoding: "utf-8".to_string(),
+            bom_len: 3,
+        },
+
+        // --- 3. UTF-16 BOMs (Least Specific - 2 Bytes) ---
+        // These are checked last for a potential match to ensure UTF-32 was checked first.
+        [0xFE, 0xFF, ..] => EncodingResult {
+            encoding: "utf-16be".to_string(),
+            bom_len: 2,
+        },
+        [0xFF, 0xFE, ..] => EncodingResult {
+            encoding: "utf-16le".to_string(),
+            bom_len: 2,
+        },
+
+        _ => EncodingResult {
+            encoding: "utf-8".to_string(),
+            bom_len: 0,
+        },
+    };
+
+    // check for the <?xml declaration for encoding and cross check with BOM if it exists.
+    let xml_start = str::from_utf8(&buf[result.bom_len..])?;
+    let xml_decl_opt: Option<&str> = XML_DECL
+        .get_regex()
+        .captures(xml_start)
+        .and_then(|cap| cap.get_match().as_str().into());
+
+    if let Some(xml_decl) = xml_decl_opt {
+        let encoding_opt: Option<&str> = XML_ENCODING
+            .get_regex()
+            .captures(xml_decl)
+            .and_then(|cap| cap.get(2).or_else(|| cap.get(3)).map(|mat| mat.as_str()));
+
+        if let Some(encoding) = encoding_opt {
+            if result.bom_len == 0 {
+                return Ok(EncodingResult {
+                    encoding: encoding.to_string(),
+                    bom_len: 0,
+                });
+            } else if encoding.eq_ignore_ascii_case(result.encoding.as_str()) {
+                return Ok(result);
+            } else {
+                return Err(ParseException::XmlEncodingMismatch {
+                    bom: result.encoding.to_string(),
+                    attribute: encoding.to_string(),
+                });
+            }
+        }
+    } else {
+        return Err(ParseException::InvalidXmlDeclaration);
+    }
+
+    Ok(result)
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -641,6 +748,8 @@ pub enum HttpTagType {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+
     use crate::wicket::markup::parser::xml_pull_parser::XmlPullParser;
 
     #[test]
@@ -649,7 +758,7 @@ mod test {
         let tag = parser.next_tag();
         assert!(tag.is_ok_and(|o| o.is_none()));
 
-        parser.parse_string("<tag/>".to_owned());
+        parser = XmlPullParser::new("<tag/>".to_owned());
         let mut tag = parser.next_tag().unwrap().unwrap();
         assert!(tag.is_open_close());
         assert_eq!("tag", tag.name());
@@ -657,7 +766,7 @@ mod test {
         assert!(!tag.has_attributes());
 
         // extra spaces
-        parser.parse_string("<tag ></tag >".to_owned());
+        parser = XmlPullParser::new("<tag ></tag >".to_owned());
         tag = parser.next_tag().unwrap().unwrap();
         assert!(tag.is_open());
         assert_eq!("tag", tag.name());
@@ -670,12 +779,12 @@ mod test {
         assert!(tag.namespace().is_none());
         assert!(!tag.has_attributes());
 
-        parser.parse_string("<tag> </tag>".to_owned());
+        parser = XmlPullParser::new("<tag> </tag>".to_owned());
         _ = parser.next_tag();
         tag = parser.next_tag().unwrap().unwrap();
         assert!(tag.is_close());
 
-        parser.parse_string("xx <tag> yy </tag> zz".to_owned());
+        parser = XmlPullParser::new("xx <tag> yy </tag> zz".to_owned());
         tag = parser.next_tag().unwrap().unwrap();
         assert!(tag.is_open());
         assert_eq!("tag", tag.name());
@@ -684,11 +793,11 @@ mod test {
         assert_eq!("tag", tag.name());
 
         // XmlPullParser does NOT check that tags get properly closed
-        parser.parse_string("<tag>".to_owned());
+        parser = XmlPullParser::new("<tag>".to_owned());
         _ = parser.next_tag();
         assert!(parser.next_tag().unwrap().is_none());
 
-        parser.parse_string("<tag> <tag> <tag>".to_owned());
+        parser = XmlPullParser::new("<tag> <tag> <tag>".to_owned());
         tag = parser.next_tag().unwrap().unwrap();
         assert!(tag.is_open());
         tag = parser.next_tag().unwrap().unwrap();
@@ -696,13 +805,13 @@ mod test {
         tag = parser.next_tag().unwrap().unwrap();
         assert!(tag.is_open());
 
-        parser.parse_string("<ns:tag/>".to_owned());
+        parser = XmlPullParser::new("<ns:tag/>".to_owned());
         tag = parser.next_tag().unwrap().unwrap();
         assert_eq!("ns", tag.namespace().unwrap());
         assert_eq!("tag", tag.name());
         assert!(tag.is_open_close());
 
-        parser.parse_string("<ns:tag/></ns:tag>".to_owned());
+        parser = XmlPullParser::new("<ns:tag></ns:tag>".to_owned());
         tag = parser.next_tag().unwrap().unwrap();
         assert_eq!("ns", tag.namespace().unwrap());
         assert_eq!("tag", tag.name());
@@ -711,5 +820,79 @@ mod test {
         assert_eq!("ns", tag.namespace().unwrap());
         assert_eq!("tag", tag.name());
         assert!(tag.is_close());
+    }
+
+    #[test]
+    pub fn encoding() {
+        let mut decl = r#"<?xml version="1.0" encoding="iso-8859-1" ?>"#;
+        let mut reader = Cursor::new(decl);
+        let mut parser = XmlPullParser::new_stream(reader, decl.len()).unwrap();
+        assert_eq!("windows-1252", parser.encoding);
+        let tag_opt = parser.next_tag().unwrap();
+        assert!(tag_opt.is_none());
+
+        decl = r#"<?xml version="1.0" encoding='iso-8859-1' ?> test test"#;
+        reader = Cursor::new(decl);
+        parser = XmlPullParser::new_stream(reader, decl.len()).unwrap();
+        let tag_opt = parser.next_tag().unwrap();
+        assert!(tag_opt.is_none());
+
+        // re-order and move whitespaces
+        decl = r#"<?xml encoding='iso-8859-1'version="1.0"?> test test"#;
+        reader = Cursor::new(decl);
+        parser = XmlPullParser::new_stream(reader, decl.len()).unwrap();
+        let tag_opt = parser.next_tag().unwrap();
+        assert!(tag_opt.is_none());
+
+        // attribute value must be enclosed by ""
+        decl = r#"<?xml encoding=iso-8859-1 ?> test test"#;
+        reader = Cursor::new(decl);
+        parser = XmlPullParser::new_stream(reader, decl.len()).unwrap();
+        assert_eq!("windows-1252", parser.encoding);
+
+        // Invalid encoding
+        decl = r#"<?xml encoding='XXX' ?>"#;
+        reader = Cursor::new(decl);
+        let mut parser_opt = XmlPullParser::new_stream(reader, decl.len());
+        assert!(matches!(
+            parser_opt,
+            Err(ParseException::NoDecoder { encoding: enc }) if enc == "XXX"
+        ));
+
+        // no extra characters allowed before <?xml>
+        // TODO General: I'd certainly prefer an exception
+        decl = r#"xxxx <?xml encoding='iso-8859-1' ?>"#;
+        reader = Cursor::new(decl);
+        parser_opt = XmlPullParser::new_stream(reader, decl.len());
+        assert!(matches!(
+            parser_opt,
+            Err(ParseException::InvalidXmlDeclaration)
+        ));
+
+        //TODO: check for the 3 valid attrbutes eg:
+        //<?xml version="1.0" encoding="UTF-8" standalone="yes"?:
+    }
+
+    #[test]
+    pub fn encoding_string() {
+        const ISO_8859_1_XML_BYTES: &[u8] = &[
+            // <?xml version="1.0" encoding="ISO-8859-1"?>
+            0x3c, 0x3f, 0x78, 0x6d, 0x6c, 0x20, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x3d,
+            0x22, 0x31, 0x2e, 0x30, 0x22, 0x20, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67,
+            0x3d, 0x22, 0x49, 0x53, 0x4f, 0x2d, 0x38, 0x38, 0x35, 0x39, 0x2d, 0x31, 0x22, 0x3f,
+            0x3e, // padding with space to put the 8859 chars out past READ_AHEAD_SIZE
+            0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+            0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+            0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+            // <name>niño</name>
+            0x3c, 0x6e, 0x61, 0x6d, 0x65, 0x3e, 0x6e, 0x69, 0xf1, 0x6f, 0x3c, 0x2f, 0x6e, 0x61,
+            0x6d, 0x65, 0x3e,
+        ];
+        let mut xml_pull_parser =
+            XmlPullParser::new_stream(ISO_8859_1_XML_BYTES, ISO_8859_1_XML_BYTES.len()).unwrap();
+        let tag = xml_pull_parser.next_tag().unwrap();
+        assert_eq!("name".to_owned(), *(tag.unwrap().name).clone());
+        //Note: windows-1252 is a super set of iso8859
+        assert_eq!("windows-1252", xml_pull_parser.encoding);
     }
 }
