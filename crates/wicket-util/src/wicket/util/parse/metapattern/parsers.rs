@@ -225,7 +225,7 @@ mod test {
     use crate::wicket::util::parse::metapattern::parsers::{
         IntegerVariableAssignmentParser, ListParser, StringVariableAssignmentParser, TagNameParser,
     };
-    use crate::wicket::util::parse::metapattern::{get_tag_name_pattern, COMMA_SEPARATED_VARIABLE};
+    use crate::wicket::util::parse::metapattern::COMMA_SEPARATED_VARIABLE;
 
     #[test]
     fn string_vaiable_assignment_parser() {
@@ -260,7 +260,6 @@ mod test {
 
     #[test]
     fn tag_parser() {
-        println!("regex:{}", get_tag_name_pattern());
         let tag = "name";
         let mut parser = TagNameParser::new(&tag);
         assert!(parser.is_capture());
@@ -273,6 +272,10 @@ mod test {
         assert_eq!(&"name", &(parser.get_name().unwrap()));
         assert_eq!(&"namespace", &(parser.get_namespace().unwrap()));
 
+        let tag = "namespace: ";
+        parser.capture(&tag);
+        assert!(!parser.is_capture());
+
         let tag = "namespace:";
         parser.capture(&tag);
         assert!(!parser.is_capture());
@@ -284,6 +287,10 @@ mod test {
 
         let tag = "tag ";
         parser.capture(tag);
-        assert!(parser.is_capture())
+        assert!(parser.is_capture());
+
+        let tag = "tag attr='1234'";
+        parser.capture(tag);
+        assert!(parser.is_capture());
     }
 }

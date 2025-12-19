@@ -560,14 +560,15 @@ impl XmlPullParser {
 
             // Are we at the end? Then there are no attributes, so we just
             // return the tag
-            let pos = tag_name_parser.end();
+            let mut pos = tag_name_parser.end();
             if pos == tag_text_length {
                 return Ok(true);
             }
 
-            // Extract attributes
-            let attribute_parser = StringVariableAssignmentParser::new(&tag_text[pos..]);
             loop {
+                // Extract attributes
+                let attribute_parser = StringVariableAssignmentParser::new(&tag_text[pos..]);
+
                 // Get key and value using attribute pattern
                 if !attribute_parser.is_capture() {
                     return Ok(true);
@@ -610,6 +611,8 @@ impl XmlPullParser {
 
                 // The input has to match exactly (no left over junk after
                 // attributes)
+                //
+                pos += attribute_parser.end();
                 if pos == tag_text_length {
                     return Ok(true);
                 }
@@ -894,5 +897,59 @@ mod test {
         assert_eq!("name".to_owned(), *(tag.unwrap().name).clone());
         //Note: windows-1252 is a super set of iso8859
         assert_eq!("windows-1252", xml_pull_parser.encoding);
+    }
+    #[test]
+    pub fn attributes() {
+        let mut parser = XmlPullParser::new("<tag>".to_owned());
+        let mut tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!(0, tag.get_attributes().len());
+        assert!(!tag.get_attributes().contains_key("attr"));
+
+        parser = XmlPullParser::new("<tag attr='1234'>".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!(1, tag.get_attributes().len());
+        assert!(tag.get_attributes().contains_key("attr"));
+        assert_eq!("1234", tag.get_attributes().get("attr").unwrap().as_ref());
+
+        parser = XmlPullParser::new("<tag attr=1234>".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!(1, tag.get_attributes().len());
+        assert!(tag.get_attributes().contains_key("attr"));
+        assert_eq!("1234", tag.get_attributes().get("attr").unwrap().as_ref());
+
+        parser = XmlPullParser::new("<tag attr=1234 >".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!(1, tag.get_attributes().len());
+        assert!(tag.get_attributes().contains_key("attr"));
+        assert_eq!("1234", tag.get_attributes().get("attr").unwrap().as_ref());
+
+        parser = XmlPullParser::new("<tag attr-withHypen=1234 >".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!(1, tag.get_attributes().len());
+        assert!(tag.get_attributes().contains_key("attr-withHypen"));
+        assert_eq!(
+            "1234",
+            tag.get_attributes().get("attr-withHypen").unwrap().as_ref()
+        );
+
+        parser = XmlPullParser::new(r#"<tag attr="1234">"#.to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!(1, tag.get_attributes().len());
+        assert!(tag.get_attributes().contains_key("attr"));
+        assert_eq!("1234", tag.get_attributes().get("attr").unwrap().as_ref());
+
+        parser = XmlPullParser::new("<tag attr='1234' test='23' >".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!(2, tag.get_attributes().len());
+        assert!(tag.get_attributes().contains_key("attr"));
+        assert_eq!("1234", tag.get_attributes().get("attr").unwrap().as_ref());
+        assert!(tag.get_attributes().contains_key("test"));
+        assert_eq!("23", tag.get_attributes().get("test").unwrap().as_ref());
+
+        parser = XmlPullParser::new("<tag attr='1234' attr='23' >".to_owned());
+        assert!(matches!(
+            parser.next_tag(),
+            Err(ParseException::AttributeExists { .. })
+        ));
     }
 }

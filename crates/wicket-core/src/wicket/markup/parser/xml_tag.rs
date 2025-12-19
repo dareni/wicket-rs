@@ -61,7 +61,7 @@ impl Default for XmlTag {
             attributes: HashMap::new(),
             closes: None,
             copy_of: None,
-            mutable: false,
+            mutable: true,
         }
     }
 }
@@ -124,6 +124,11 @@ impl XmlTag {
     // -------------------------------------------------------------------------
     //  Attribute handling
     // -------------------------------------------------------------------------
+
+    pub fn get_attributes(&self) -> &HashMap<Rc<str>, Rc<str>> {
+        &self.attributes
+    }
+
     pub fn get_attribute(&self, key: &str) -> Option<&str> {
         // self.attributes.get(key.as_ref()).map(|v| v.as_ref())
         self.attributes.get(key).map(|s| s.as_ref())
