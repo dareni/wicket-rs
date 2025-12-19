@@ -898,6 +898,7 @@ mod test {
         //Note: windows-1252 is a super set of iso8859
         assert_eq!("windows-1252", xml_pull_parser.encoding);
     }
+
     #[test]
     pub fn attributes() {
         let mut parser = XmlPullParser::new("<tag>".to_owned());
@@ -952,4 +953,133 @@ mod test {
             Err(ParseException::AttributeExists { .. })
         ));
     }
+
+    #[test]
+    pub fn comments() {
+        let mut parser = XmlPullParser::new("<!-- test --><tag>".to_owned());
+        let mut tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!("tag", tag.name());
+
+        let mut parser = XmlPullParser::new(
+            "<!-- test --><tag> aaa <!-- test 1 --> bbb <tag> <!-- test --> </tag>".to_owned(),
+        );
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("tag", tag.name());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("tag", tag.name());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_close());
+        assert_eq!("tag", tag.name());
+        assert!(parser.next_tag().unwrap().is_none());
+    }
+
+    #[test]
+    pub fn script() {
+        let mut parser = XmlPullParser::new(
+            "<html><script language=\"JavaScript\">... <x a> ...</script></html>".to_owned(),
+        );
+        let mut tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("html", tag.name());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("script", tag.name());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_close());
+        assert_eq!("script", tag.name());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_close());
+        assert_eq!("html", tag.name());
+    }
+
+    #[test]
+    pub fn skip_script_tag() {
+        let mut parser = XmlPullParser::new(
+"<html><script type=\"module\">all I need is a < char to break parser </script><body></body></html>".to_owned()
+        );
+        let mut tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("html", tag.name());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("script", tag.name());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_close());
+        assert_eq!("script", tag.name());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("body", tag.name());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_close());
+        assert_eq!("body", tag.name());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_close());
+        assert_eq!("html", tag.name());
+    }
+
+    #[test]
+    pub fn conditional_comments() {
+        let mut parser = XmlPullParser::new(
+            "<!--[if IE]><a href='test.html'>my link</a><![endif]-->".to_owned(),
+        );
+        let mut tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("a", tag.name());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_close());
+        assert_eq!("a", tag.name());
+        assert!(parser.next_tag().unwrap().is_none());
+    }
+
+    #[test]
+    pub fn conditional_comments2() {
+        let mut parser = XmlPullParser::new(
+            "<!--[if IE]><a href='test.html'>my link</a><![endif]-->".to_owned(),
+        );
+        let mut tag_type = parser.next_iteration().unwrap();
+        assert!(matches!(tag_type, HttpTagType::ConditionalComment));
+        tag_type = parser.next_iteration().unwrap();
+        assert!(matches!(tag_type, HttpTagType::Tag));
+        assert!(parser.get_element().unwrap().is_open());
+        tag_type = parser.next_iteration().unwrap();
+        assert!(matches!(tag_type, HttpTagType::Body));
+        tag_type = parser.next_iteration().unwrap();
+        assert!(matches!(tag_type, HttpTagType::Tag));
+        let tag = parser.get_element().unwrap();
+        assert_eq!("a", tag.name());
+        assert!(tag.is_close());
+        tag_type = parser.next_iteration().unwrap();
+        assert!(matches!(tag_type, HttpTagType::ConditionalCommentEndif));
+        tag_type = parser.next_iteration().unwrap();
+        assert!(matches!(tag_type, HttpTagType::NotInitialized));
+    }
+
+    #[test]
+    pub fn names() {
+        let mut parser = XmlPullParser::new("<filter-mapping>".to_owned());
+        let mut tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("filter-mapping", tag.name());
+
+        parser = XmlPullParser::new("<filter.mapping>".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("filter.mapping", tag.name());
+
+        parser = XmlPullParser::new("<filter_mapping>".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert!(tag.is_open());
+        assert_eq!("filter_mapping", tag.name());
+    }
+
+    #[test]
+    pub fn doctype() {
+        let mut parser = XmlPullParser::new("<!DOCTYPE html>".to_owned());
+        let _tag_type = parser.next_iteration().unwrap();
+        assert!(matches!(HttpTagType::Doctype, _tag_type));
+        assert_eq!("!DOCTYPE html", parser.get_doctype().unwrap());
+    }
+
 }
