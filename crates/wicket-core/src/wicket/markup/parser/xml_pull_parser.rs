@@ -1082,4 +1082,24 @@ mod test {
         assert_eq!("!DOCTYPE html", parser.get_doctype().unwrap());
     }
 
+    #[test]
+    pub fn downlevel_revealed_conditional_comments() {
+        let mut parser = XmlPullParser::new(
+            r#"<!--[if (gt IE 9)|!(IE)]><!--><html lang="en" class="no-js"><!--<![endif]--> <span>test</span>"#.to_owned(),
+        );
+        let mut tag_type = parser.next_iteration().unwrap();
+        assert!(matches!(tag_type, HttpTagType::ConditionalComment));
+
+        tag_type = parser.next_iteration().unwrap();
+        assert!(matches!(tag_type, HttpTagType::Comment));
+
+        tag_type = parser.next_iteration().unwrap();
+        assert!(matches!(tag_type, HttpTagType::Tag));
+        let tag = parser.get_element().unwrap();
+        assert_eq!("html", tag.name());
+        assert!(tag.is_open());
+
+        tag_type = parser.next_iteration().unwrap();
+        assert!(matches!(tag_type, HttpTagType::ConditionalCommentEndif));
+    }
 }

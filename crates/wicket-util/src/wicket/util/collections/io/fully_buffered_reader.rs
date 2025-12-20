@@ -265,7 +265,7 @@ impl FullyBufferedReader {
             if current_quotation_char.is_none() {
                 if current_char == '\'' || current_char == '\"' {
                     current_quotation_char = Some(current_char);
-                    self.count_lines_to(start_pos + i);
+                    self.count_lines_to(i);
                 }
             } else if current_quotation_char.is_some_and(|q_char| q_char == current_char)
                 && previous_char.is_some_and(|pc| pc != '\\')
