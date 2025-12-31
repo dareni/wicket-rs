@@ -74,6 +74,14 @@ impl XmlTag {
         }
     }
 
+    pub fn new_from(name: &str, tag_type: &TagType) -> Self {
+        Self {
+            name: Rc::from(name),
+            tag_type: tag_type.to_owned(),
+            ..Default::default()
+        }
+    }
+
     /// Tag with a `TextSegment` and a `TagType`.
     pub fn with_text(text: TextSegment, tag_type: TagType) -> Self {
         Self {
@@ -134,16 +142,6 @@ impl XmlTag {
         self.attributes.get(key).map(|s| s.as_ref())
     }
 
-    /*
-    self.attributes.get(key.as_ref()).map(|v| v.as_ref()) gives the error:
-
-    type annotations needed
-    impl`s satisfying `str: std::convert::AsRef<_>` found in the following crates: `core`, `std`:
-
-    where attributes is:  attributes: HashMap<Rc<str>, Rc<str>>,   // attribute map (String → String)
-
-    */
-
     pub fn put_attribute(
         &mut self,
         key: impl Into<Rc<str>>,
@@ -153,11 +151,11 @@ impl XmlTag {
         self.attributes.insert(key.into(), value.into())
     }
 
-    pub fn put_bool(&mut self, key: impl Into<Rc<str>>, value: bool) -> Option<Rc<str>> {
+    pub fn put_attribute_bool(&mut self, key: impl Into<Rc<str>>, value: bool) -> Option<Rc<str>> {
         self.put_attribute(key, if value { "true" } else { "false" })
     }
 
-    pub fn put_int(&mut self, key: impl Into<Rc<str>>, value: i32) -> Option<Rc<str>> {
+    pub fn put_attribute_int(&mut self, key: impl Into<Rc<str>>, value: i32) -> Option<Rc<str>> {
         self.put_attribute(key, value.to_string())
     }
 
@@ -168,6 +166,17 @@ impl XmlTag {
 
     pub fn has_attributes(&self) -> bool {
         !self.attributes.is_empty()
+    }
+
+    /// Append specified value to the specified attribute.
+    pub fn append_attribute_string(&mut self, key: &str, value: &str, separator: char) {
+        match self.get_attribute(key) {
+            Some(a) => {
+                let val = format!("{}{}{}", a, separator, value);
+                self.put_attribute(key, val)
+            }
+            None => self.put_attribute(key, value),
+        };
     }
 
     // -------------------------------------------------------------------------

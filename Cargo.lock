@@ -12,6 +12,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitflags"
+version = "2.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -141,10 +147,16 @@ checksum = "1292c0d970b54115d14f2492fe0170adf21d68a1de108eebc51c1df4f346a091"
 name = "wicket-core"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "encoding_rs",
  "thiserror",
+ "wicket-request",
  "wicket-util",
 ]
+
+[[package]]
+name = "wicket-request"
+version = "0.1.0"
 
 [[package]]
 name = "wicket-util"
