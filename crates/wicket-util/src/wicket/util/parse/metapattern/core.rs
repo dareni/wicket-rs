@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::num::ParseIntError;
 
+use bitflags::bitflags;
 use once_cell::sync::Lazy;
 use regex::{Error as RegexError, Regex, RegexBuilder};
 use thiserror::Error;
@@ -115,10 +116,10 @@ impl Pattern {
     pub fn new_with_flags(source: Cow<'static, str>, flags: &RegexFlags) -> Self {
         let mut regex_builder = RegexBuilder::new(source.as_ref());
         let regex_builder = regex_builder
-            .case_insensitive(flags.case_insensitive)
-            .multi_line(flags.multi_line)
-            .dot_matches_new_line(flags.dot_matches_new_line)
-            .ignore_whitespace(flags.ignore_whitespace);
+            .case_insensitive(flags.contains(RegexFlags::CASE_INSENSITIVE))
+            .multi_line(flags.contains(RegexFlags::MULTI_LINE))
+            .dot_matches_new_line(flags.contains(RegexFlags::DOT_MATCHES_NEW_LINE))
+            .ignore_whitespace(flags.contains(RegexFlags::IGNORE_WHITESPACE));
 
         let regex = regex_builder
             .build()
@@ -193,13 +194,15 @@ pub enum ParserError {
     ParseIntError(#[from] ParseIntError),
 }
 
-/// Flags corresponding to `regex::RegexBuilder` options.
-#[derive(Default, Clone, Copy)]
-pub struct RegexFlags {
-    pub case_insensitive: bool,
-    pub multi_line: bool,
-    pub dot_matches_new_line: bool,
-    pub ignore_whitespace: bool,
+bitflags! {
+    /// Flags corresponding to `regex::RegexBuilder` options.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct RegexFlags: u8 {
+        const CASE_INSENSITIVE      = 0b00000000;
+        const MULTI_LINE            = 0b00000001;
+        const DOT_MATCHES_NEW_LINE  = 0b00000010;
+        const IGNORE_WHITESPACE     = 0b00000100;
+    }
 }
 
 pub mod capture_name {
