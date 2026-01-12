@@ -149,6 +149,7 @@ version = "0.1.0"
 dependencies = [
  "bitflags",
  "encoding_rs",
+ "once_cell",
  "thiserror",
  "wicket-request",
  "wicket-util",
@@ -162,6 +163,7 @@ version = "0.1.0"
 name = "wicket-util"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "html-escape",
  "once_cell",
  "regex",

@@ -7,11 +7,13 @@ use regex::{Error as RegexError, Regex, RegexBuilder};
 use thiserror::Error;
 
 /// Simplify static Pattern creation boiler plate; lazy construction once shared everywhere.
+#[macro_export]
 macro_rules! static_pattern {
     ($name:ident, $re:expr) => {
         pub static $name: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Borrowed($re)));
     };
 }
+#[macro_export]
 macro_rules! static_pattern_owned {
     ($name:ident, $re:expr) => {
         pub static $name: Lazy<Pattern> = Lazy::new(|| Pattern::new(Cow::Owned($re)));

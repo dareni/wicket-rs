@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 bitflags = "2.10.0"
 encoding_rs = "0.8.35"
+once_cell = "1.21.3"
 thiserror.workspace = true
 wicket-util = { path = "../wicket-util/"}
 wicket-request = { path = "../wicket-request/"}

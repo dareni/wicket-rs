@@ -31,15 +31,23 @@ pub trait AutoComponentFactory {
 
 pub enum MarkupElement {
     /// Plain HTML, text, or whitespace that doesn't interact with Wicket logic.
-    Raw(String),
+    RawMarkup(RawMarkup),
 
     /// A Wicket-aware tag (e.g., <span wicket:id="label">).
     /// This carries the promoted ComponentTag data.
-    Tag(Box<ComponentTag>),
+    ComponentTag(ComponentTag),
 
     /// Comments, CDATA, or specialized fragments like the
     /// Downlevel-Revealed Conditional Comments.
-    Special(String),
+    SpecialTag(SpecialTag),
+}
+
+pub struct RawMarkup {
+    pub tag: XmlTag,
+}
+
+pub struct SpecialTag {
+    pub tag: XmlTag,
 }
 
 /// A subclass of MarkupElement which represents a "significant" markup tag, such as a component open
@@ -92,6 +100,13 @@ impl ComponentTag {
         let tag = XmlTag::new_from(name, tag_type);
         ComponentTag {
             tag,
+            ..Default::default()
+        }
+    }
+
+    pub fn from_xml_tag(xml_tag: XmlTag) -> Self {
+        ComponentTag {
+            tag: xml_tag,
             ..Default::default()
         }
     }
@@ -287,7 +302,7 @@ impl ComponentTag {
 
     pub fn eq_to(&self, element: &MarkupElement) -> bool {
         match &element {
-            MarkupElement::Tag(tag) => self.get_xml_tag().eq_xml_tag(tag.get_xml_tag()),
+            MarkupElement::ComponentTag(tag) => self.get_xml_tag().eq_xml_tag(tag.get_xml_tag()),
             _ => false,
         }
     }
