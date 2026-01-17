@@ -1,18 +1,18 @@
+use std::borrow::Cow;
 //#![allow(unused)]
 use std::io::Cursor;
-use std::ops::Deref;
-use std::{io::Read, rc::Rc};
+use std::io::Read;
+use std::ops::Range;
 
 use wicket_util::wicket::util::collections::io::fully_buffered_reader::{
     FullyBufferedReader, ParseException,
 };
-use wicket_util::wicket::util::parse::metapattern::parsers::{
-    StringVariableAssignmentParser, TagNameParser,
-};
 use wicket_util::wicket::util::parse::metapattern::{XML_DECL, XML_ENCODING};
 use wicket_util::wicket::util::string::strings::unescape_markup;
 
-use super::xml_tag::{TagType, TextSegment, XmlTag};
+use crate::wicket::markup::parser::xml_tag::AttrValue;
+
+use super::xml_tag::{TagType, XmlTag};
 
 static STYLE: &str = "style";
 static SCRIPT: &str = "script";
@@ -49,18 +49,23 @@ impl SkipType {
     }
 }
 
+pub struct AttributeRange {
+    key_range: Range<usize>,
+    value_range: Range<usize>,
+}
+
 pub struct XmlPullParser {
     // Encoding of the xml.
     encoding: String,
     // A XML independent reader which loads the whole source data into memory
     // and which provides convenience methods to access the data.
     input: FullyBufferedReader,
-    // Temporary variable which will hold the name of the closing tag
+    // Temporary variable which will hold the name of the closing tag.
     skip_until_text: SkipType,
     last_type: HttpTagType,
-    last_text: Option<Rc<str>>,
+    last_text_range: Range<usize>,
     last_tag: Option<XmlTag>,
-    doc_type: Option<String>,
+    doc_type_range: Range<usize>,
 }
 impl Default for XmlPullParser {
     fn default() -> Self {
@@ -69,9 +74,9 @@ impl Default for XmlPullParser {
             input: FullyBufferedReader::new_from_string(DEFAULT_BUFFER),
             skip_until_text: SkipType::None,
             last_type: HttpTagType::NotInitialized,
-            last_text: Option::None as Option<Rc<str>>,
+            last_text_range: Range::default(),
             last_tag: Option::None as Option<XmlTag>,
-            doc_type: Option::None as Option<String>,
+            doc_type_range: Range::default(),
         }
     }
 }
@@ -111,8 +116,8 @@ impl XmlPullParser {
         self.encoding.as_str()
     }
 
-    pub fn get_doctype(&self) -> Option<&str> {
-        self.doc_type.as_deref()
+    pub fn get_doctype(&self) -> &str {
+        &self.input.get_input()[self.doc_type_range.clone()]
     }
 
     pub fn get_input_from_position_marker(&self, to_pos: usize) -> &str {
@@ -166,14 +171,13 @@ impl XmlPullParser {
         }
 
         self.input.set_position(pos);
-        let tmp_last_text = self.input.get_substring(start_index, pos).ok_or_else(|| {
-            ParseException::LastTextError {
+        if start_index > pos {
+            return Err(ParseException::LastTextError {
                 line: self.input.get_line_number(),
                 column: self.input.get_column_number(),
                 position: start_index,
-            }
-        })?;
-        self.last_text = Some(Rc::<str>::from(tmp_last_text));
+            });
+        }
         self.last_type = HttpTagType::Body;
 
         // Check the tag is properly closed
@@ -216,20 +220,10 @@ impl XmlPullParser {
             //It's a BODY
             if open_bracket_index.is_none() {
                 //There is no next matching tag.
-                let text = self.input.get_substring_from_position_marker(Option::None);
-                if text.trim().is_empty() {
-                    self.last_text = None;
-                } else {
-                    self.last_text = Some(Rc::from(text));
-                }
                 self.input.set_position(self.input.size());
                 self.last_type = HttpTagType::Body;
                 return Ok(HttpTagType::Body);
             }
-            let text = self
-                .input
-                .get_substring_from_position_marker(open_bracket_index);
-            self.last_text = Some(Rc::from(text));
             match open_bracket_index {
                 None => {
                     return Err(ParseException::NoOpenBracketIndexFindingTag(
@@ -279,19 +273,12 @@ impl XmlPullParser {
                 position: self.input.get_position(),
             })?;
 
-        let full_tag_ref = self
-            .input
-            .get_substring(open_bracket_i, close_bracket_i + 1)
-            .unwrap_or_else(|| unreachable!());
-
-        let rc_ref: Rc<str> = Rc::from(full_tag_ref);
-        self.last_text = Some(rc_ref.clone());
+        self.last_text_range = open_bracket_i..close_bracket_i + 1;
 
         // Get the tagtext between open and close brackets
-        let full_tag_len = rc_ref.len();
-        let mut tag_slice: &str = rc_ref[1..full_tag_len - 1].as_ref();
+        let mut tag_range = self.last_text_range.start + 1..self.last_text_range.end - 1;
 
-        if tag_slice.is_empty() {
+        if tag_range.is_empty() {
             return Err(ParseException::EmptyTag {
                 line: self.input.get_line_number(),
                 column: self.input.get_column_number(),
@@ -302,57 +289,58 @@ impl XmlPullParser {
         // Type of the tag, to be determined next
         let tag_type: TagType;
 
-        if tag_slice.ends_with("/") {
+        if self.input.get_input()[tag_range.clone()].ends_with("/") {
             // If the tag ends in '/', it's a "simple" tag like <foo/>
             tag_type = TagType::OpenClose;
-            tag_slice = &tag_slice[0..tag_slice.len() - 1];
-        } else if tag_slice.starts_with("/") {
+            // tag_slice = &tag_slice[0..tag_slice.len() - 1];
+            tag_range = tag_range.start..tag_range.clone().end - 1;
+        } else if self.input.get_input()[tag_range.clone()].starts_with("/") {
             // The tag text starts with a '/', it's a simple close tag
             tag_type = TagType::Close;
-            tag_slice = &tag_slice[1..];
+            tag_range = tag_range.start + 1..tag_range.clone().end;
         } else {
             // It must be an open tag
             tag_type = TagType::Open;
             // If open tag and starts with "s" like "script" or "style", than ...
-            if tag_slice.len() > STYLE.len() && tag_slice[0..1].eq_ignore_ascii_case("s") {
-                let lower_case = tag_slice.to_lowercase();
-                if lower_case.starts_with(SCRIPT) {
+            if tag_range.len() > STYLE.len()
+                && self.input.get_input()[tag_range.start..tag_range.start + 1]
+                    .eq_ignore_ascii_case("s")
+            {
+                if self.input.get_input()[tag_range.start..tag_range.start + SCRIPT.len()]
+                    .eq_ignore_ascii_case(SCRIPT)
+                {
                     // where the type attribute is missing or
                     // where type attribute is text/javascript or importmap or module
                     self.skip_until_text = SkipType::Script;
-                } else if lower_case.starts_with(STYLE) {
+                } else if self.input.get_input()[tag_range.start..tag_range.start + STYLE.len()]
+                    .eq_ignore_ascii_case(STYLE)
+                {
                     self.skip_until_text = SkipType::Style;
                 }
             }
         }
 
         // Handle special tags like <!-- and <![CDATA ...
-        let first_char = tag_slice.chars().next();
+        let first_char = self.input.get_input()[tag_range.clone()].chars().next();
         if first_char.is_some_and(|ch| ch == '!' || ch == '?') {
-            self.special_tag_handling(tag_slice, open_bracket_i, close_bracket_i)?;
+            self.special_tag_handling(&tag_range, open_bracket_i, close_bracket_i)?;
 
-            let text_opt: Option<Rc<str>> = self.last_text.as_ref().map(|v| Rc::from(v.deref()));
-            let text = TextSegment::new(
-                text_opt,
-                open_bracket_i,
-                self.input.get_line_number(),
-                self.input.get_column_number(),
-            );
-            self.last_tag = Some(XmlTag::with_text(text, tag_type));
+            self.last_tag = Some(XmlTag::with_text(
+                self.input.get_input_arc(),
+                self.last_text_range.clone(),
+                tag_type,
+            ));
             return Ok(self.last_type);
         }
 
-        let text_opt: Option<Rc<str>> = self.last_text.as_ref().map(|v| Rc::from(v.deref()));
-        let text = TextSegment::new(
-            text_opt,
-            open_bracket_i,
-            self.input.get_line_number(),
-            self.input.get_column_number(),
+        let mut tmp_last_tag = XmlTag::with_text(
+            self.input.get_input_arc(),
+            self.last_text_range.clone(),
+            tag_type,
         );
-        let mut tmp_last_tag = XmlTag::with_text(text, tag_type);
 
         // Parse the tag text and populate tag attributes
-        if self.parse_tag_text(&mut tmp_last_tag, tag_slice)? {
+        if self.parse_tag_text(&mut tmp_last_tag, tag_range)? {
             // Move to position after the tag
             self.input.set_position(close_bracket_i + 1);
             self.last_type = HttpTagType::Tag;
@@ -370,14 +358,14 @@ impl XmlPullParser {
     /// Handle special tags like &lt;!-- --&gt; or &lt;![CDATA[..]]&gt; or &lt;?xml&gt;
     fn special_tag_handling(
         &mut self,
-        tag_text: &str,
+        tag_text_range: &Range<usize>,
         open_bracket_index: usize,
         mut close_bracket_index: usize,
     ) -> Result<(), ParseException> {
         // Handle comments
-        if tag_text.starts_with("!--") {
+        if self.input.get_input()[tag_text_range.clone()].starts_with("!--") {
             // downlevel-revealed conditional comments e.g.: <!--[if (gt IE9)|!(IE)]><!-->
-            if tag_text.contains("![endif]--") {
+            if self.input.get_input()[tag_text_range.clone()].contains("![endif]--") {
                 self.last_type = HttpTagType::ConditionalCommentEndif;
                 // Move to position after the tag
                 self.input.set_position(close_bracket_index + 1);
@@ -385,7 +373,9 @@ impl XmlPullParser {
             }
             // Conditional comment? E.g.
             // "<!--[if IE]><a href='test.html'>my link</a><![endif]-->"
-            if tag_text.starts_with("!--[if ") && tag_text.ends_with("]") {
+            if self.input.get_input()[tag_text_range.clone()].starts_with("!--[if ")
+                && self.input.get_input()[tag_text_range.clone()].ends_with("]")
+            {
                 let pos_option = self.input.find_str_at("]-->", open_bracket_index + 1);
                 let mut pos = pos_option.ok_or_else(|| ParseException::UnclosedComment {
                     line: self.input.get_line_number(),
@@ -393,10 +383,7 @@ impl XmlPullParser {
                     position: self.input.get_position(),
                 })?;
                 pos += 4;
-                self.last_text = self
-                    .input
-                    .get_substring(open_bracket_index, pos)
-                    .map(Rc::from);
+                self.last_text_range = open_bracket_index..pos;
 
                 // Actually it is no longer a comment. It is now
                 // up to the browser to select the section appropriate.
@@ -416,10 +403,7 @@ impl XmlPullParser {
                         position: self.input.get_position(),
                     })?;
                 pos += 3;
-                self.last_text = self
-                    .input
-                    .get_substring(open_bracket_index, pos)
-                    .map(Rc::from);
+                self.last_text_range = open_bracket_index..pos;
                 self.last_type = HttpTagType::Comment;
                 self.input.set_position(pos);
             }
@@ -428,16 +412,16 @@ impl XmlPullParser {
         // The closing tag of a conditional comment, e.g.
         // "<!--[if IE]><a href='test.html'>my link</a><![endif]-->
         // and also <!--<![endif]-->"
-        if tag_text.eq_ignore_ascii_case("![endif]--") {
+        if self.input.get_input()[tag_text_range.clone()].eq_ignore_ascii_case("![endif]--") {
             self.last_type = HttpTagType::ConditionalCommentEndif;
             self.input.set_position(close_bracket_index + 1);
             return Ok(());
         }
         // CDATA sections might contain "<" which is not part of an XML tag.
         // Make sure escaped "<" are treated right
-        if tag_text.starts_with("![CDATA[") {
+        if self.input.get_input()[tag_text_range.clone()].starts_with("![CDATA[") {
             let mut pos1 = open_bracket_index;
-            let mut tmp_tag_text: &str;
+            let mut tmp_tag_range: Range<usize>;
             loop {
                 // Get index of closing tag and advance past the tag
                 close_bracket_index = self.find_char('>', pos1).ok_or_else(|| {
@@ -447,36 +431,33 @@ impl XmlPullParser {
                         position: self.input.get_position(),
                     }
                 })?;
-                // Get the tagtext between open and close brackets
-                tmp_tag_text = self
-                    .input
-                    .get_substring(open_bracket_index + 1, close_bracket_index)
-                    .ok_or_else(|| ParseException::NoSpecialTagText(open_bracket_index + 1))?;
+                // Test the tagtext between open and close brackets
+                tmp_tag_range = open_bracket_index + 1..close_bracket_index;
+                if tmp_tag_range.is_empty() {
+                    return Err(ParseException::NoSpecialTagText(open_bracket_index + 1));
+                }
 
                 pos1 = close_bracket_index + 1;
-                if tmp_tag_text.ends_with("]]") {
+                if self.input.get_input()[tmp_tag_range.clone()].ends_with("]]") {
                     break;
                 }
             }
             // Move to position after the tag
-            self.last_text = Some(Rc::from(tmp_tag_text));
+            self.last_text_range = tmp_tag_range;
             self.last_type = HttpTagType::Cdata;
             self.input.set_position(close_bracket_index + 1);
             return Ok(());
         }
-        if tag_text.starts_with('?') {
+        if self.input.get_input()[tag_text_range.clone()].starts_with('?') {
             self.last_type = HttpTagType::ProcessingInstruction;
             // Move to position after the tag
             self.input.set_position(close_bracket_index + 1);
             return Ok(());
         }
-        if tag_text.starts_with("!DOCTYPE") {
+        if self.input.get_input()[tag_text_range.clone()].starts_with("!DOCTYPE") {
             self.last_type = HttpTagType::Doctype;
             // Get the tagtext between open and close brackets
-            self.doc_type = self
-                .input
-                .get_substring(open_bracket_index + 1, close_bracket_index)
-                .map(|s| s.to_owned());
+            self.doc_type_range = open_bracket_index + 1..close_bracket_index;
             self.input.set_position(close_bracket_index + 1);
         }
         // Move to position after the tag
@@ -490,8 +471,8 @@ impl XmlPullParser {
         self.last_tag.take()
     }
 
-    pub fn get_string(&self) -> Option<&str> {
-        self.last_text.as_deref()
+    pub fn get_string(&self) -> &str {
+        &self.input.get_input()[self.last_text_range.clone()]
     }
 
     /// Take the next XmlTag.
@@ -548,81 +529,180 @@ impl XmlPullParser {
     }
 
     /// Parse the text between tags. For example, "a href=foo.html".
-    fn parse_tag_text(&self, tag: &mut XmlTag, tag_text: &str) -> Result<bool, ParseException> {
-        let tag_text_length = tag_text.len();
-
-        let tag_name_parser = TagNameParser::new(tag_text);
+    fn parse_tag_text(
+        &self,
+        tag: &mut XmlTag,
+        tag_text_range: Range<usize>,
+    ) -> Result<bool, ParseException> {
+        //Todo: remove tagname parser.
+        // let tag_name_parser = TagNameParser::new(&self.input.get_input()[tag_text_range.clone()]);
         // If we match tagname pattern
-        if tag_name_parser.is_capture() {
-            //Extract the tag from the pattern matcher
-            tag.name = Rc::from(tag_name_parser.get_name()?);
-            tag.namespace = tag_name_parser.get_namespace().ok().map(|n| n.into());
+        // if tag_name_parser.is_capture() {
+        //Extract the tag from the pattern matcher
+        let (name, namespace) = self.parse_tag_name(tag_text_range.clone());
+        if !name.is_empty() {
+            tag.name_range = name.clone();
+            tag.namespace_range = namespace;
 
             // Are we at the end? Then there are no attributes, so we just
             // return the tag
-            let mut pos = tag_name_parser.end();
-            if pos == tag_text_length {
+            if name.end == tag_text_range.end {
                 return Ok(true);
             }
 
-            loop {
-                // Extract attributes
-                let attribute_parser = StringVariableAssignmentParser::new(&tag_text[pos..]);
+            let attrib_start_index = name.end;
 
-                // Get key and value using attribute pattern
-                if !attribute_parser.is_capture() {
-                    return Ok(true);
-                }
+            let attrib_list = XmlPullParser::find_attribute_pairs(
+                self.input.get_input(),
+                attrib_start_index..tag_text_range.end,
+            )?;
 
-                // In case like <html xmlns:wicket> the value be Error
-                let mut value = attribute_parser.get_value().unwrap_or_default();
+            for ar in attrib_list {
+                let key_abs_range = (attrib_start_index + ar.key_range.start)
+                    ..(attrib_start_index + ar.key_range.end);
+                let val_abs_range = (attrib_start_index + ar.value_range.start)
+                    ..(attrib_start_index + ar.value_range.end);
+                let value = &self.input.get_input()[val_abs_range.clone()];
 
-                // Chop off double quotes or single quotes
-                if value.starts_with("\"") || value.starts_with("\'") {
-                    value = &value[1..value.len() - 1];
-                }
+                let decoded = unescape_markup(value);
 
-                // Trim trailing whitespace
-                value = value.trim();
-                // Unescape
-                let string_value: String = unescape_markup(value);
+                let attr_value = match decoded {
+                    // No value decoded!
+                    // Just store the range to keep it zero-copy.
+                    Cow::Borrowed(_) => AttrValue::Raw(val_abs_range),
 
-                // Get key
-                let key = attribute_parser.get_key();
-
-                // Put the attribute in the attributes hash
-                match key {
-                    Ok(k) => match tag.get_attribute(k) {
-                        Some(v) => {
-                            return Err(ParseException::AttributeExists {
-                                line: self.input.get_line_number(),
-                                column: self.input.get_column_number(),
-                                position: self.input.get_position(),
-                                tag_key: k.to_owned(),
-                                tag_value: v.to_owned(),
-                            })
-                        }
-                        None => {
-                            tag.put_attribute(k, string_value);
-                        }
-                    },
-                    Err(_) => continue,
-                }
-
-                // The input has to match exactly (no left over junk after
-                // attributes)
-                //
-                pos += attribute_parser.end();
-                if pos == tag_text_length {
-                    return Ok(true);
-                }
+                    // Value decoded.
+                    // Store the new, owned String.
+                    Cow::Owned(unescaped_string) => AttrValue::Unescaped(unescaped_string),
+                };
+                tag.put_attribute(super::xml_tag::XmlAttribute {
+                    key_range: key_abs_range,
+                    value: attr_value,
+                })?;
             }
         }
-        Ok(false)
+        Ok(true)
     }
 
     pub fn determine_encoding(xml_head: &str) {
         let _cap_opt = XML_ENCODING.get_regex().captures(xml_head);
+    }
+
+    fn parse_tag_name(&self, tag_inner: Range<usize>) -> (Range<usize>, Option<Range<usize>>) {
+        let content = &self.input.get_input()[tag_inner.clone()];
+
+        // Find where the name ends (first space, slash, or the end of the tag)
+        let name_end_index = content
+            .find(|c: char| c.is_whitespace() || c == '/' || c == '>')
+            .unwrap_or(content.len());
+
+        let full_name = &content[..name_end_index];
+
+        // Look for the namespace colon ':'
+        if let Some(colon_pos) = full_name.find(':') {
+            let namespace_range = Range {
+                start: tag_inner.start,
+                end: tag_inner.start + colon_pos,
+            };
+            let name_range = Range {
+                start: tag_inner.start + colon_pos + 1,
+                end: tag_inner.start + name_end_index,
+            };
+            (name_range, Some(namespace_range))
+        } else {
+            let name_range = Range {
+                start: tag_inner.start,
+                end: tag_inner.start + name_end_index,
+            };
+            (name_range, None)
+        }
+    }
+
+    /// Scans a tag's inner content for attribute pairs: key="value" or key='value'
+    pub fn find_attribute_pairs(
+        content: &str,
+        content_position: Range<usize>,
+    ) -> Result<Vec<AttributeRange>, ParseException> {
+        let mut pairs = Vec::new();
+        let bytes = content[content_position.clone()].as_bytes();
+        let mut cursor = 0;
+        let mut finding_open_quote = false;
+        let mut finding_close_quote = false;
+
+        while cursor < bytes.len() {
+            // 1. Skip whitespace to find the start of a key
+            while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+                cursor += 1;
+            }
+            if cursor >= bytes.len() || bytes[cursor] == b'/' || bytes[cursor] == b'>' {
+                break;
+            }
+
+            let key_start = cursor;
+            // 2. Find the end of the key (usually at '=')
+            while cursor < bytes.len()
+                && !bytes[cursor].is_ascii_whitespace()
+                && bytes[cursor] != b'='
+            {
+                cursor += 1;
+            }
+            let key_range = key_start..cursor;
+
+            // 3. Look for the '='
+            while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+                cursor += 1;
+            }
+
+            if cursor < bytes.len() && bytes[cursor] == b'=' {
+                cursor += 1; // skip '='
+                finding_close_quote = true;
+                finding_open_quote = true;
+
+                // 4. Skip whitespace after '='
+                while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+                    cursor += 1;
+                }
+
+                // 5. Handle Quotes
+                if cursor < bytes.len() && (bytes[cursor] == b'"' || bytes[cursor] == b'\'') {
+                    let quote = bytes[cursor];
+                    finding_open_quote = false;
+                    cursor += 1; // skip opening quote
+                    let val_start = cursor;
+
+                    while cursor < bytes.len() && bytes[cursor] != quote {
+                        cursor += 1;
+                    }
+                    if bytes[cursor] == quote {
+                        finding_close_quote = false;
+                    }
+
+                    let value_range = val_start..cursor;
+                    if cursor < bytes.len() {
+                        cursor += 1;
+                    } // skip closing quote
+
+                    pairs.push(AttributeRange {
+                        key_range,
+                        value_range,
+                    });
+                }
+            } else {
+                // Key only attribute.
+                pairs.push(AttributeRange {
+                    key_range,
+                    value_range: 0..0,
+                });
+            }
+
+            if finding_open_quote || finding_close_quote {
+                let (line, column) = FullyBufferedReader::count_lines_in_str(
+                    &content[0..content_position.start + cursor],
+                );
+                return Err(ParseException::AttributeValueUnquotedParseError { line, column });
+            }
+        }
+        Ok(pairs)
     }
 }
 
@@ -894,7 +974,7 @@ mod test {
         let mut xml_pull_parser =
             XmlPullParser::new_stream(ISO_8859_1_XML_BYTES, ISO_8859_1_XML_BYTES.len()).unwrap();
         let tag = xml_pull_parser.next_tag().unwrap();
-        assert_eq!("name".to_owned(), *(tag.unwrap().name).clone());
+        assert_eq!("name".to_owned(), *(tag.unwrap().name()));
         //Note: windows-1252 is a super set of iso8859
         assert_eq!("windows-1252", xml_pull_parser.encoding);
     }
@@ -904,48 +984,55 @@ mod test {
         let mut parser = XmlPullParser::new("<tag>".to_owned());
         let mut tag = parser.next_tag().unwrap().unwrap();
         assert_eq!(0, tag.get_attributes().len());
-        assert!(!tag.get_attributes().contains_key("attr"));
+        assert!(!tag.contains_attribute_key("attr"));
 
         parser = XmlPullParser::new("<tag attr='1234'>".to_owned());
         tag = parser.next_tag().unwrap().unwrap();
         assert_eq!(1, tag.get_attributes().len());
-        assert!(tag.get_attributes().contains_key("attr"));
-        assert_eq!("1234", tag.get_attributes().get("attr").unwrap().as_ref());
+        assert!(tag.contains_attribute_key("attr"));
+        assert_eq!("1234", tag.get_attribute_value("attr").unwrap());
 
         parser = XmlPullParser::new("<tag attr=1234>".to_owned());
-        tag = parser.next_tag().unwrap().unwrap();
-        assert_eq!(1, tag.get_attributes().len());
-        assert!(tag.get_attributes().contains_key("attr"));
-        assert_eq!("1234", tag.get_attributes().get("attr").unwrap().as_ref());
+        let error = parser.next_tag().unwrap_err();
+        assert!(matches!(
+            error,
+            ParseException::AttributeValueUnquotedParseError {
+                line: 0,
+                column: 10
+            },
+        ));
 
-        parser = XmlPullParser::new("<tag attr=1234 >".to_owned());
+        parser = XmlPullParser::new("<tag checkbox >".to_owned());
         tag = parser.next_tag().unwrap().unwrap();
         assert_eq!(1, tag.get_attributes().len());
-        assert!(tag.get_attributes().contains_key("attr"));
-        assert_eq!("1234", tag.get_attributes().get("attr").unwrap().as_ref());
+        assert!(tag.contains_attribute_key("checkbox"));
+        assert_eq!("", tag.get_attribute_value("checkbox").unwrap());
 
-        parser = XmlPullParser::new("<tag attr-withHypen=1234 >".to_owned());
+        parser = XmlPullParser::new("<tag attr='1234' >".to_owned());
         tag = parser.next_tag().unwrap().unwrap();
         assert_eq!(1, tag.get_attributes().len());
-        assert!(tag.get_attributes().contains_key("attr-withHypen"));
-        assert_eq!(
-            "1234",
-            tag.get_attributes().get("attr-withHypen").unwrap().as_ref()
-        );
+        assert!(tag.contains_attribute_key("attr"));
+        assert_eq!("1234", tag.get_attribute_value("attr").unwrap());
+
+        parser = XmlPullParser::new("<tag attr-withHypen='1234' >".to_owned());
+        tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!(1, tag.get_attributes().len());
+        assert!(tag.contains_attribute_key("attr-withHypen"));
+        assert_eq!("1234", tag.get_attribute_value("attr-withHypen").unwrap());
 
         parser = XmlPullParser::new(r#"<tag attr="1234">"#.to_owned());
         tag = parser.next_tag().unwrap().unwrap();
         assert_eq!(1, tag.get_attributes().len());
-        assert!(tag.get_attributes().contains_key("attr"));
-        assert_eq!("1234", tag.get_attributes().get("attr").unwrap().as_ref());
+        assert!(tag.contains_attribute_key("attr"));
+        assert_eq!("1234", tag.get_attribute_value("attr").unwrap());
 
         parser = XmlPullParser::new("<tag attr='1234' test='23' >".to_owned());
         tag = parser.next_tag().unwrap().unwrap();
         assert_eq!(2, tag.get_attributes().len());
-        assert!(tag.get_attributes().contains_key("attr"));
-        assert_eq!("1234", tag.get_attributes().get("attr").unwrap().as_ref());
-        assert!(tag.get_attributes().contains_key("test"));
-        assert_eq!("23", tag.get_attributes().get("test").unwrap().as_ref());
+        assert!(tag.contains_attribute_key("attr"));
+        assert_eq!("1234", tag.get_attribute_value("attr").unwrap());
+        assert!(tag.contains_attribute_key("test"));
+        assert_eq!("23", tag.get_attribute_value("test").unwrap());
 
         parser = XmlPullParser::new("<tag attr='1234' attr='23' >".to_owned());
         assert!(matches!(
@@ -1079,7 +1166,7 @@ mod test {
         let mut parser = XmlPullParser::new("<!DOCTYPE html>".to_owned());
         let _tag_type = parser.next_iteration().unwrap();
         assert!(matches!(HttpTagType::Doctype, _tag_type));
-        assert_eq!("!DOCTYPE html", parser.get_doctype().unwrap());
+        assert_eq!("!DOCTYPE html", parser.get_doctype());
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::ops::Range;
 use std::rc::Rc;
 use std::slice::Iter;
 
@@ -96,8 +97,8 @@ impl Default for ComponentTag {
 }
 
 impl ComponentTag {
-    pub fn new(name: &str, tag_type: &TagType) -> Self {
-        let tag = XmlTag::new_from(name, tag_type);
+    pub fn new(name_range: Range<usize>, tag_type: &TagType) -> Self {
+        let tag = XmlTag::new_from(name_range, tag_type);
         ComponentTag {
             tag,
             ..Default::default()
@@ -175,11 +176,11 @@ impl ComponentTag {
 
     /// Return true when this tag does not require a closing tag.
     pub fn requires_close_tag(&self) -> bool {
-        if self.get_xml_tag().namespace.is_none() {
+        if self.get_xml_tag().namespace().is_none() {
             HtmlHandler::requires_close_tag(self.get_xml_tag().name())
         } else {
             let ns = self.get_xml_tag().namespace().unwrap();
-            let q_name = format!("{}:{}", ns, self.get_xml_tag().name);
+            let q_name = format!("{}:{}", ns, self.get_xml_tag().name());
 
             HtmlHandler::requires_close_tag(&q_name)
         }
@@ -202,6 +203,8 @@ impl ComponentTag {
     }
 
     /// Write tag to response.
+    /// When strip_wicket_attributes is true, wicket:id is removed from the output.
+    /// The default namespace is 'wicket'.
     pub fn write_output(
         &self,
         response: &Response,
@@ -222,11 +225,15 @@ impl ComponentTag {
             namespace_prefix = Some(Rc::from(format!("{}:", namespace).to_owned()));
         }
         if self.get_xml_tag().has_attributes() {
-            for (key, value) in self.get_xml_tag().get_attributes().iter() {
+            for xml_attribute in self.get_xml_tag().get_attributes().iter() {
                 if namespace_prefix
                     .as_deref()
-                    .is_none_or(|nsp| !key.starts_with(nsp))
+                    .is_none_or(|nsp| !xml_attribute.key_starts_with(self.tag.source(), nsp))
                 {
+                    //Write the attribute when it is not a wicket attribute.
+                    //If it is a wicket attrib only write it when we are not stripping them.
+                    let key = xml_attribute.key(self.tag.source());
+                    let value = xml_attribute.value(self.tag.source());
                     response.write(" ");
                     response.write(key);
                     response.write(r#"=""#);

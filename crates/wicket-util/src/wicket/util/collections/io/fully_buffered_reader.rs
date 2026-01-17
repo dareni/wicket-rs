@@ -1,4 +1,8 @@
-use std::io::{self, Read};
+use std::{
+    io::{self, Read},
+    ops::Range,
+    sync::Arc,
+};
 use thiserror::Error;
 
 use crate::wicket::util::parse::metapattern::ParserError;
@@ -7,7 +11,7 @@ use crate::wicket::util::parse::metapattern::ParserError;
 /// source reader into memory and provides convenient methods for navigation and searching.
 pub struct FullyBufferedReader {
     /// All the chars from the resource.
-    input: String,
+    input: Arc<str>,
 
     /// Current position in the input.
     input_position: usize,
@@ -28,7 +32,7 @@ pub struct FullyBufferedReader {
 impl Default for FullyBufferedReader {
     fn default() -> Self {
         Self {
-            input: "".to_string(),
+            input: Arc::default(),
             input_position: 0,
             line_number: 1,
             column_number: 1,
@@ -136,15 +140,20 @@ pub enum ParseException {
         "Invalid xml declaration: '<?xml' must occupy byte index 0 of the stream after the BOM."
     )]
     InvalidXmlDeclaration,
+    #[error(
+        "Error parsing attributes! Unquoted value found for tag at line {line}, column {column}"
+    )]
+    AttributeValueUnquotedParseError { line: usize, column: usize },
 }
 
 impl FullyBufferedReader {
     /// Read all the data from the `reader` into memory.
     pub fn new(mut utf8_reader: impl Read) -> Result<Self, ParseException> {
-        let mut input = String::new();
+        let mut data = String::new();
         utf8_reader
-            .read_to_string(&mut input)
+            .read_to_string(&mut data)
             .map_err(|e| ParseException::IO { cause: e })?;
+        let input = Arc::from(data);
         Ok(Self {
             input,
             ..Self::default()
@@ -154,9 +163,17 @@ impl FullyBufferedReader {
     /// Construct a `FullyBufferedReader` from the `input` string.
     pub fn new_from_string<T: Into<String>>(input: T) -> Self {
         Self {
-            input: input.into(),
+            input: Arc::from(input.into()),
             ..Self::default()
         }
+    }
+
+    pub fn get_input(&self) -> &str {
+        &self.input
+    }
+
+    pub fn get_input_arc(&self) -> Arc<str> {
+        self.input.clone()
     }
 
     /// Get the characters from the internal position marker to `toPos`.
@@ -169,6 +186,14 @@ impl FullyBufferedReader {
             None => &self.input[self.position_marker..],
             Some(x) if x < self.position_marker => "",
             Some(x) => &self.input[self.position_marker..x],
+        }
+    }
+
+    pub fn get_range_from_position_marker(&self, to_pos: Option<usize>) -> Range<usize> {
+        match to_pos {
+            None => self.position_marker..self.input.len(),
+            Some(x) if x < self.position_marker => Range::default(),
+            Some(x) => self.position_marker..x,
         }
     }
 
@@ -195,6 +220,27 @@ impl FullyBufferedReader {
     /// @return The markup to be parsed.
     pub fn to_string(&self) -> &str {
         &self.input
+    }
+
+    pub fn count_lines_in_str(input: &str) -> (usize, usize) {
+        let input_chars = input.chars();
+        let mut line_number = 0;
+        let mut column_number = 0;
+        input_chars.for_each(|ch| {
+            match ch {
+                '\n' => {
+                    column_number = 1;
+                    line_number += 1;
+                }
+                '\r' => {
+                    // Do nothing.
+                }
+                _ => {
+                    column_number += 1;
+                }
+            }
+        });
+        (line_number, column_number)
     }
 
     /// Counts lines starting where we last left off up to the index provided.

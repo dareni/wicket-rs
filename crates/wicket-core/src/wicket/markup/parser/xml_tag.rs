@@ -1,6 +1,12 @@
-use std::collections::HashMap;
 use std::fmt;
+use std::ops::Range;
 use std::rc::Rc;
+use std::sync::Arc;
+
+use smallvec::SmallVec;
+use wicket_util::wicket::util::collections::io::fully_buffered_reader::{
+    FullyBufferedReader, ParseException,
+};
 
 /// The three possible tag kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -19,49 +25,82 @@ pub struct TextSegment {
     pub text: Option<Rc<str>>, // shared, immutable string slice
 }
 
-impl TextSegment {
-    pub fn new(text: Option<Rc<str>>, pos: usize, line: usize, col: usize) -> Self {
-        Self {
-            text,
-            pos,
-            line_number: line,
-            column_number: col,
+#[derive(Debug)]
+pub enum AttrValue {
+    /// Zero-copy: just the coordinates in the Arc<str>.
+    Raw(Range<usize>),
+    /// Processed: the unescaped result.
+    Unescaped(String),
+}
+
+#[derive(Debug)]
+pub struct XmlAttribute {
+    pub key_range: Range<usize>,
+    pub value: AttrValue,
+}
+
+impl XmlAttribute {
+    pub fn equals(&self, other: &XmlAttribute) -> bool {
+        if self.key_range != other.key_range {
+            return false;
+        }
+        match (&self.value, &other.value) {
+            (AttrValue::Raw(range_s), AttrValue::Raw(range_o)) => range_s == range_o,
+            (AttrValue::Unescaped(str_s), AttrValue::Unescaped(str_o)) => str_s == str_o,
+            _ => false,
         }
     }
-    pub fn len(&self) -> usize {
-        self.text.as_ref().map_or(0, |t| t.len())
+
+    pub fn key<'a>(&self, source: &'a str) -> &'a str {
+        &source[self.key_range.clone()]
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.text.is_none()
+    pub fn value<'a>(&'a self, source: &'a str) -> &'a str {
+        match &self.value {
+            AttrValue::Raw(range) => &source[range.clone()],
+            AttrValue::Unescaped(unescaped) => unescaped.as_str(),
+        }
+    }
+
+    pub fn eq_key(&self, source: &str, other_key: &str) -> bool {
+        if self.key_range.len() != other_key.len() {
+            return false;
+        }
+        &source[self.key_range.clone()] == other_key
+    }
+
+    pub fn key_starts_with(&self, source: &str, prefix: &str) -> bool {
+        if self.key_range.len() < prefix.len() {
+            return false;
+        }
+        source[self.key_range.clone()].starts_with(prefix)
     }
 }
 
-#[derive(Clone)]
 pub struct XmlTag {
-    // ---- immutable core data -------------------------------------------------
-    text: Option<Rc<TextSegment>>, // `None` after `make_immutable`
+    /// The entire xml source containing this tag.
+    source: Arc<str>,
+    /// The range of the entire tag: e.g., `<wicket:label id="test">`.
+    text_range: Range<usize>, //
     tag_type: TagType,
-    pub name: Rc<str>,
-    pub namespace: Option<Rc<str>>,
+    pub name_range: Range<usize>,
+    pub namespace_range: Option<Range<usize>>,
 
-    // ---- mutable state -------------------------------------------------------
-    attributes: HashMap<Rc<str>, Rc<str>>, // attribute map (String → String)
-    closes: Option<Rc<XmlTag>>,            // the open tag this close tag matches
-    copy_of: Option<Rc<XmlTag>>,           // immutable source of a mutable copy
-    mutable: bool,                         // true = mutable, false = immutable
+    /// Attributes: HashMap<Range<usize>, AttrValue>,
+    attributes: SmallVec<[XmlAttribute; 4]>,
+    /// The open tag this close tag matches.
+    closes: Option<Rc<XmlTag>>,
 }
 impl Default for XmlTag {
     fn default() -> Self {
         Self {
-            text: None,
+            source: Arc::default(),
+            text_range: Range::default(),
             tag_type: TagType::Open,
-            name: Rc::from(""),
-            namespace: None,
-            attributes: HashMap::new(),
+            name_range: Range::default(),
+            namespace_range: None,
+            attributes: SmallVec::new(),
             closes: None,
-            copy_of: None,
-            mutable: true,
         }
     }
 }
@@ -74,18 +113,19 @@ impl XmlTag {
         }
     }
 
-    pub fn new_from(name: &str, tag_type: &TagType) -> Self {
+    pub fn new_from(name_range: Range<usize>, tag_type: &TagType) -> Self {
         Self {
-            name: Rc::from(name),
+            name_range,
             tag_type: tag_type.to_owned(),
             ..Default::default()
         }
     }
 
     /// Tag with a `TextSegment` and a `TagType`.
-    pub fn with_text(text: TextSegment, tag_type: TagType) -> Self {
+    pub fn with_text(source: Arc<str>, text_range: Range<usize>, tag_type: TagType) -> Self {
         Self {
-            text: Some(Rc::new(text)),
+            source,
+            text_range,
             tag_type,
             ..Default::default()
         }
@@ -109,108 +149,123 @@ impl XmlTag {
         self.tag_type == TagType::OpenClose
     }
 
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    pub fn namespace(&self) -> Option<&str> {
-        self.namespace.as_deref()
+    pub fn text(&self) -> &str {
+        &self.source[self.text_range.clone()]
     }
 
-    pub fn line_number(&self) -> usize {
-        self.text.as_ref().map_or(0, |t| t.line_number)
+    pub fn name(&self) -> &str {
+        &self.source[self.name_range.clone()]
     }
-    pub fn column_number(&self) -> usize {
-        self.text.as_ref().map_or(0, |t| t.column_number)
+    pub fn namespace(&self) -> Option<&str> {
+        self.namespace_range
+            .as_ref()
+            .map(|r| &self.source[r.clone()])
     }
+
+    pub fn get_line_and_column(&self) -> (usize, usize) {
+        FullyBufferedReader::count_lines_in_str(&self.source)
+    }
+
     pub fn pos(&self) -> usize {
-        self.text.as_ref().map_or(0, |t| t.pos)
+        self.text_range.start
     }
     pub fn length(&self) -> usize {
-        self.text.as_ref().map_or(0, |t| t.len())
+        self.text_range.len()
+    }
+    pub fn source(&self) -> &str {
+        &self.source
     }
 
     // -------------------------------------------------------------------------
     //  Attribute handling
     // -------------------------------------------------------------------------
 
-    pub fn get_attributes(&self) -> &HashMap<Rc<str>, Rc<str>> {
+    pub fn get_attributes(&self) -> &SmallVec<[XmlAttribute; 4]> {
         &self.attributes
     }
 
-    pub fn get_attribute(&self, key: &str) -> Option<&str> {
-        // self.attributes.get(key.as_ref()).map(|v| v.as_ref())
-        self.attributes.get(key).map(|s| s.as_ref())
+    pub fn get_attribute_value(&self, key: &str) -> Option<&str> {
+        for xml_attribute in &self.attributes {
+            if xml_attribute.eq_key(&self.source, key) {
+                let ret = Some(match &xml_attribute.value {
+                    // Turn the Range into a borrow of our Arc
+                    AttrValue::Raw(range) => &self.source[range.clone()],
+                    // Return a borrow of our already-owned String
+                    AttrValue::Unescaped(s) => s.as_str(),
+                });
+                return ret;
+            }
+        }
+        None
     }
 
-    pub fn put_attribute(
-        &mut self,
-        key: impl Into<Rc<str>>,
-        value: impl Into<Rc<str>>,
-    ) -> Option<Rc<str>> {
-        self.ensure_mutable();
-        self.attributes.insert(key.into(), value.into())
-    }
+    pub fn put_attribute(&mut self, attrib: XmlAttribute) -> Result<(), ParseException> {
+        // Check the attribute does not already exist before adding it.
+        for existing_attrib in &self.attributes {
+            if attrib.key_range.len() == existing_attrib.key_range.len() {
+                let new_key = &self.source[attrib.key_range.clone()];
+                let existing_key = &self.source[existing_attrib.key_range.clone()];
+                if new_key.eq(existing_key) {
+                    let (line, column) = FullyBufferedReader::count_lines_in_str(
+                        &self.source[..self.text_range.clone().start],
+                    );
+                    let value: String = match attrib.value {
+                        AttrValue::Raw(range) => self.source[range].into(),
+                        AttrValue::Unescaped(str) => str,
+                    };
 
-    pub fn put_attribute_bool(&mut self, key: impl Into<Rc<str>>, value: bool) -> Option<Rc<str>> {
-        self.put_attribute(key, if value { "true" } else { "false" })
-    }
-
-    pub fn put_attribute_int(&mut self, key: impl Into<Rc<str>>, value: i32) -> Option<Rc<str>> {
-        self.put_attribute(key, value.to_string())
-    }
-
-    pub fn remove_attribute(&mut self, key: &str) -> Option<Rc<str>> {
-        self.ensure_mutable();
-        self.attributes.remove(key)
+                    return Err(ParseException::AttributeExists {
+                        line,
+                        column,
+                        position: self.pos(),
+                        tag_key: new_key.into(),
+                        tag_value: value,
+                    });
+                }
+            }
+        }
+        self.attributes.push(attrib);
+        Ok(())
     }
 
     pub fn has_attributes(&self) -> bool {
         !self.attributes.is_empty()
     }
 
-    /// Append specified value to the specified attribute.
-    pub fn append_attribute_string(&mut self, key: &str, value: &str, separator: char) {
-        match self.get_attribute(key) {
-            Some(a) => {
-                let val = format!("{}{}{}", a, separator, value);
-                self.put_attribute(key, val)
+    pub fn contains_attribute_key(&self, key: &str) -> bool {
+        for xml_attribute in &self.attributes {
+            if xml_attribute.key_range.len() == key.len()
+                && &self.source[xml_attribute.key_range.clone()] == key
+            {
+                return true;
             }
-            None => self.put_attribute(key, value),
-        };
-    }
-
-    // -------------------------------------------------------------------------
-    //  Mutability control
-    // -------------------------------------------------------------------------
-    pub fn is_mutable(&self) -> bool {
-        self.mutable
-    }
-
-    /// Makes the tag immutable – clears the `text` field and prevents further mutation.
-    pub fn make_immutable(&mut self) {
-        if self.mutable {
-            self.mutable = false;
-            self.text = None; // drop the raw markup
         }
+        false
     }
 
-    /// Returns a mutable copy if the current instance is immutable.
-    pub fn mutable(&self) -> Self {
-        if self.mutable {
-            self.clone()
-        } else {
-            let mut copy = self.clone();
-            copy.mutable = true;
-            copy.copy_of = Some(Rc::new(self.clone()));
-            copy
+    pub fn contains_attribute_value(&self, value: &str) -> bool {
+        for xml_attribute in &self.attributes {
+            match &xml_attribute.value {
+                AttrValue::Raw(attr_range) => {
+                    if attr_range.len() == value.len() && &self.source[attr_range.clone()] == value
+                    {
+                        return true;
+                    }
+                }
+                AttrValue::Unescaped(unescaped) => {
+                    if unescaped == value {
+                        return true;
+                    }
+                }
+            }
         }
+        false
     }
 
     // -------------------------------------------------------------------------
     //  Open/close linking
     // -------------------------------------------------------------------------
     pub fn set_open_tag(&mut self, open: Rc<XmlTag>) {
-        self.ensure_mutable();
         self.closes = Some(open);
     }
 
@@ -235,16 +290,22 @@ impl XmlTag {
         if self.is_close() {
             buf.push('/');
         }
-        if let Some(ns) = &self.namespace {
+        if let Some(ns) = &self.namespace() {
             buf.push_str(ns);
             buf.push(':');
         }
-        buf.push_str(&self.name);
-        for (k, v) in &self.attributes {
+        buf.push_str(self.name());
+
+        for attrib in &self.attributes {
+            let key = &self.source[attrib.key_range.clone()];
+            let value: &str = match &attrib.value {
+                AttrValue::Raw(range) => &self.source[range.clone()],
+                AttrValue::Unescaped(str) => str.as_ref(),
+            };
             buf.push(' ');
-            buf.push_str(k);
+            buf.push_str(key);
             buf.push_str("=\"");
-            buf.push_str(v);
+            buf.push_str(value);
             buf.push('"');
         }
         if self.is_open_close() {
@@ -255,11 +316,12 @@ impl XmlTag {
     }
 
     pub fn to_debug_string(&self) -> String {
+        let (line_number, _) = self.get_line_and_column();
         format!(
             "[Tag name = {}, pos = {}, line = {}, attributes = {:?}, type = {:?}]",
-            self.name,
+            self.name(),
             self.pos(),
-            self.line_number(),
+            line_number,
             self.attributes,
             self.tag_type
         )
@@ -268,16 +330,11 @@ impl XmlTag {
     // -------------------------------------------------------------------------
     //  Internal helpers
     // -------------------------------------------------------------------------
-    fn ensure_mutable(&self) {
-        if !self.mutable {
-            panic!("Attempt to modify an immutable XmlTag");
-        }
-    }
 
     pub fn eq_xml_tag(&self, other: &XmlTag) -> bool {
         // ---- namespace comparison (both `Option<Rc<str>>`) ----
-        let ns_eq = match (&self.namespace, &other.namespace) {
-            (Some(a), Some(b)) => a.as_ref() == b.as_ref(),
+        let ns_eq = match (&self.namespace(), &other.namespace()) {
+            (Some(a), Some(b)) => a == b,
             (None, None) => true,
             _ => false,
         };
@@ -287,7 +344,7 @@ impl XmlTag {
         }
 
         // ---- name comparison (both `Rc<str>`) ----
-        if self.name.as_ref() != other.name.as_ref() {
+        if self.name() != other.name() {
             return false;
         }
 
@@ -297,10 +354,20 @@ impl XmlTag {
             return false;
         }
 
-        for (k, v) in &self.attributes {
-            match other.attributes.get(k) {
-                Some(other_v) if other_v.as_ref() == v.as_ref() => {}
-                _ => return false,
+        for idx in 0..self.attributes.len() {
+            let attrib_o = self.attributes.get(idx);
+            let other_attrib_o = other.attributes.get(idx);
+
+            match (attrib_o, other_attrib_o) {
+                (Some(attrib), Some(other_attrib)) => {
+                    if !attrib.equals(other_attrib) {
+                        return false;
+                    }
+                }
+                (None, None) => {}
+                _ => {
+                    return false;
+                }
             }
         }
 
@@ -317,17 +384,16 @@ impl fmt::Display for XmlTag {
 impl fmt::Debug for XmlTag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("XmlTag")
-            .field("name", &self.name)
-            .field("namespace", &self.namespace)
+            .field("name", &self.name())
+            .field("namespace", &self.namespace())
             .field("type", &self.tag_type)
             .field("attributes", &self.attributes)
-            .field("mutable", &self.mutable)
             .finish()
     }
 }
 
 #[cfg(test)]
-mod tes {
+mod test {
     use super::*;
 
     #[test]
