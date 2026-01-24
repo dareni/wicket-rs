@@ -1,12 +1,14 @@
-use std::fmt;
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::{borrow::Cow, fmt};
 
 use smallvec::SmallVec;
+
 use wicket_util::wicket::util::collections::io::fully_buffered_reader::{
     FullyBufferedReader, ParseException,
 };
+use wicket_util::wicket::util::string::strings::escape_markup;
 
 /// The three possible tag kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -77,19 +79,53 @@ impl XmlAttribute {
     }
 }
 
+/// Use as much of the original xml markup as possible, any changes to the original are stored as
+///required.
+#[derive(Debug)]
+pub enum XmlString {
+    Raw(Range<usize>),
+    Modified(String),
+}
+
+impl XmlString {
+    ///The Cow makes the value available even when the source is not.
+    pub fn value<'a>(&'a self, source: &'a str) -> Cow<'a, str> {
+        match self {
+            Self::Raw(range) => Cow::Borrowed(&source[range.clone()]),
+            Self::Modified(modified_str) => Cow::Owned(modified_str.to_owned()),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Raw(range) => range.len(),
+            Self::Modified(modified_str) => modified_str.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Raw(range) => range.is_empty(),
+            Self::Modified(modified_str) => modified_str.is_empty(),
+        }
+    }
+}
+
 pub struct XmlTag {
     /// The entire xml source containing this tag.
     source: Arc<str>,
     /// The range of the entire tag: e.g., `<wicket:label id="test">`.
-    text_range: Range<usize>, //
+    pub text_range: Range<usize>, //
     tag_type: TagType,
-    pub name_range: Range<usize>,
-    pub namespace_range: Option<Range<usize>>,
+    pub name_range: XmlString,
+    pub namespace_range: Option<XmlString>,
 
     /// Attributes: HashMap<Range<usize>, AttrValue>,
     attributes: SmallVec<[XmlAttribute; 4]>,
     /// The open tag this close tag matches.
     closes: Option<Rc<XmlTag>>,
+    /// render entirely from the source when the tag is unmodified.
+    modified: bool,
 }
 impl Default for XmlTag {
     fn default() -> Self {
@@ -97,10 +133,11 @@ impl Default for XmlTag {
             source: Arc::default(),
             text_range: Range::default(),
             tag_type: TagType::Open,
-            name_range: Range::default(),
+            name_range: XmlString::Raw(Range::default()),
             namespace_range: None,
             attributes: SmallVec::new(),
             closes: None,
+            modified: false,
         }
     }
 }
@@ -115,7 +152,7 @@ impl XmlTag {
 
     pub fn new_from(name_range: Range<usize>, tag_type: &TagType) -> Self {
         Self {
-            name_range,
+            name_range: XmlString::Raw(name_range),
             tag_type: tag_type.to_owned(),
             ..Default::default()
         }
@@ -153,13 +190,11 @@ impl XmlTag {
         &self.source[self.text_range.clone()]
     }
 
-    pub fn name(&self) -> &str {
-        &self.source[self.name_range.clone()]
+    pub fn name(&self) -> Cow<'_, str> {
+        self.name_range.value(&self.source)
     }
-    pub fn namespace(&self) -> Option<&str> {
-        self.namespace_range
-            .as_ref()
-            .map(|r| &self.source[r.clone()])
+    pub fn namespace(&self) -> Option<Cow<'_, str>> {
+        self.namespace_range.as_ref().map(|r| r.value(&self.source))
     }
 
     pub fn get_line_and_column(&self) -> (usize, usize) {
@@ -284,6 +319,15 @@ impl XmlTag {
     // -------------------------------------------------------------------------
     //  Debug / string conversion
     // -------------------------------------------------------------------------
+
+    pub fn to_char_sequence<'a>(&'a self) -> Cow<'a, str> {
+        if self.modified {
+            Cow::Owned(self.to_xml_string())
+        } else {
+            Cow::Borrowed(self.text())
+        }
+    }
+
     pub fn to_xml_string(&self) -> String {
         let mut buf = String::new();
         buf.push('<');
@@ -294,18 +338,23 @@ impl XmlTag {
             buf.push_str(ns);
             buf.push(':');
         }
-        buf.push_str(self.name());
+        buf.push_str(self.name().as_ref());
 
         for attrib in &self.attributes {
             let key = &self.source[attrib.key_range.clone()];
-            let value: &str = match &attrib.value {
-                AttrValue::Raw(range) => &self.source[range.clone()],
-                AttrValue::Unescaped(str) => str.as_ref(),
-            };
             buf.push(' ');
             buf.push_str(key);
             buf.push_str("=\"");
-            buf.push_str(value);
+
+            match &attrib.value {
+                AttrValue::Raw(range) => buf.push_str(&self.source[range.clone()]),
+                AttrValue::Unescaped(str) => {
+                    //let escaped: Cow<'_, str> = escape_markup(str);
+                    let escaped = escape_markup(str);
+                    buf.push_str(escaped.as_ref());
+                }
+            };
+
             buf.push('"');
         }
         if self.is_open_close() {

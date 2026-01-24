@@ -34,7 +34,7 @@ pub enum MarkupElement {
     /// Plain HTML, text, or whitespace that doesn't interact with Wicket logic.
     RawMarkup(RawMarkup),
 
-    /// A Wicket-aware tag (e.g., <span wicket:id="label">).
+    /// A Wicket-aware tag (e.g., <span wicket:id="label">) or a tag modified by a wicket filter.
     /// This carries the promoted ComponentTag data.
     ComponentTag(ComponentTag),
 
@@ -44,7 +44,7 @@ pub enum MarkupElement {
 }
 
 pub struct RawMarkup {
-    pub tag: XmlTag,
+    pub text_range: Range<usize>,
 }
 
 pub struct SpecialTag {
@@ -177,7 +177,7 @@ impl ComponentTag {
     /// Return true when this tag does not require a closing tag.
     pub fn requires_close_tag(&self) -> bool {
         if self.get_xml_tag().namespace().is_none() {
-            HtmlHandler::requires_close_tag(self.get_xml_tag().name())
+            HtmlHandler::requires_close_tag(self.get_xml_tag().name().as_ref())
         } else {
             let ns = self.get_xml_tag().namespace().unwrap();
             let q_name = format!("{}:{}", ns, self.get_xml_tag().name());
@@ -194,11 +194,11 @@ impl ComponentTag {
 
     pub fn write_synthetic_close_tag(&self, response: &Response) {
         response.write("</");
-        if self.get_xml_tag().namespace().is_some() {
-            response.write(self.get_xml_tag().namespace().unwrap());
+        if let Some(ns) = self.get_xml_tag().namespace() {
+            response.write(ns.as_ref());
             response.write(":");
         }
-        response.write(self.get_xml_tag().name());
+        response.write(self.get_xml_tag().name().as_ref());
         response.write(">");
     }
 
@@ -215,11 +215,11 @@ impl ComponentTag {
         if self.get_xml_tag().tag_type().eq(&TagType::Close) {
             response.write("/");
         }
-        if self.get_xml_tag().namespace().is_some() {
-            response.write(self.get_xml_tag().namespace().unwrap());
+        if let Some(ns) = self.get_xml_tag().namespace() {
+            response.write(ns.as_ref());
             response.write(":");
         }
-        response.write(self.get_xml_tag().name());
+        response.write(self.get_xml_tag().name().as_ref());
         let mut namespace_prefix: Option<Rc<String>> = None;
         if strip_wicket_attributes {
             namespace_prefix = Some(Rc::from(format!("{}:", namespace).to_owned()));

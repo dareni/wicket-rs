@@ -11,6 +11,7 @@ use wicket_util::wicket::util::parse::metapattern::{XML_DECL, XML_ENCODING};
 use wicket_util::wicket::util::string::strings::unescape_markup;
 
 use crate::wicket::markup::parser::xml_tag::AttrValue;
+use crate::wicket::markup::parser::xml_tag::XmlString;
 
 use super::xml_tag::{TagType, XmlTag};
 
@@ -122,6 +123,10 @@ impl XmlPullParser {
 
     pub fn get_input_from_position_marker(&self, to_pos: usize) -> &str {
         self.input.get_substring_from_position_marker(Some(to_pos))
+    }
+
+    pub fn get_range_from_position_marker(&self, to_pos: usize) -> Range<usize> {
+        self.input.get_range_from_position_marker(Some(to_pos))
     }
 
     pub fn get_input(&self, from_pos: usize, to_pos: usize) -> Option<&str> {
@@ -541,8 +546,8 @@ impl XmlPullParser {
         //Extract the tag from the pattern matcher
         let (name, namespace) = self.parse_tag_name(tag_text_range.clone());
         if !name.is_empty() {
-            tag.name_range = name.clone();
-            tag.namespace_range = namespace;
+            tag.name_range = XmlString::Raw(name.clone());
+            tag.namespace_range = namespace.map(XmlString::Raw);
 
             // Are we at the end? Then there are no attributes, so we just
             // return the tag
