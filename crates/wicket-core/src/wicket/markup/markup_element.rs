@@ -136,13 +136,13 @@ impl ComponentTag {
     }
 
     //  Returns true when this tag close the given open tag.
-    pub fn closes(&self, open: &ComponentTag) -> bool {
+    pub fn closes(&self, open: &ComponentTag, components: &[MarkupElement]) -> bool {
         match self.open_tag.as_deref() {
             Some(ct) => {
                 if std::ptr::eq(ct, open) {
                     true
                 } else {
-                    self.get_xml_tag().closes(open.get_xml_tag())
+                    self.get_xml_tag().closes(open.get_xml_tag(), components)
                 }
             }
             None => false,
