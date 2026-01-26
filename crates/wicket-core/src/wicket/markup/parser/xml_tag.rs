@@ -86,8 +86,13 @@ impl XmlAttribute {
 ///required.
 #[derive(Debug)]
 pub enum XmlString {
+    /// The "Zero-Copy" king. Points back to the original HTML source.
     Raw(Range<usize>),
-    Modified(String),
+    /// The variant used for changes made by MarkupFilters.
+    /// Clones on request are just atomic pointer increments.
+    Modified(Arc<String>),
+    /// The Component request-local modifications.
+    Dynamic(String),
 }
 
 impl XmlString {
@@ -95,7 +100,8 @@ impl XmlString {
     pub fn value<'a>(&'a self, source: &'a str) -> Cow<'a, str> {
         match self {
             Self::Raw(range) => Cow::Borrowed(&source[range.clone()]),
-            Self::Modified(modified_str) => Cow::Owned(modified_str.to_owned()),
+            Self::Modified(modified_str) => Cow::Borrowed(&**modified_str),
+            Self::Dynamic(request_local_string) => Cow::Owned(request_local_string.to_owned()),
         }
     }
 
@@ -103,6 +109,7 @@ impl XmlString {
         match self {
             Self::Raw(range) => range.len(),
             Self::Modified(modified_str) => modified_str.len(),
+            Self::Dynamic(request_local_string) => request_local_string.len(),
         }
     }
 
@@ -110,6 +117,7 @@ impl XmlString {
         match self {
             Self::Raw(range) => range.is_empty(),
             Self::Modified(modified_str) => modified_str.is_empty(),
+            Self::Dynamic(request_local_string) => request_local_string.is_empty(),
         }
     }
 }
