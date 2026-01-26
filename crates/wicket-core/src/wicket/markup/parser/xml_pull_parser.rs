@@ -301,11 +301,11 @@ impl XmlPullParser {
             tag_range = tag_range.start..tag_range.clone().end - 1;
         } else if self.input.get_input()[tag_range.clone()].starts_with("/") {
             // The tag text starts with a '/', it's a simple close tag
-            tag_type = TagType::Close;
+            tag_type = TagType::Close { opener_index: None };
             tag_range = tag_range.start + 1..tag_range.clone().end;
         } else {
             // It must be an open tag
-            tag_type = TagType::Open;
+            tag_type = TagType::Open { closer_index: None };
             // If open tag and starts with "s" like "script" or "style", than ...
             if tag_range.len() > STYLE.len()
                 && self.input.get_input()[tag_range.start..tag_range.start + 1]
@@ -539,11 +539,6 @@ impl XmlPullParser {
         tag: &mut XmlTag,
         tag_text_range: Range<usize>,
     ) -> Result<bool, ParseException> {
-        //Todo: remove tagname parser.
-        // let tag_name_parser = TagNameParser::new(&self.input.get_input()[tag_text_range.clone()]);
-        // If we match tagname pattern
-        // if tag_name_parser.is_capture() {
-        //Extract the tag from the pattern matcher
         let (name, namespace) = self.parse_tag_name(tag_text_range.clone());
         if !name.is_empty() {
             tag.name_range = XmlString::Raw(name.clone());

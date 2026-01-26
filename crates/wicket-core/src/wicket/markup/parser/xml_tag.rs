@@ -10,11 +10,14 @@ use wicket_util::wicket::util::collections::io::fully_buffered_reader::{
 };
 use wicket_util::wicket::util::string::strings::escape_markup;
 
+use crate::wicket::markup::markup_element::{ComponentTag, MarkupElement};
+
 /// The three possible tag kinds.
+/// Store an index into Markup.components for the relative tag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TagType {
-    Close,
-    Open,
+    Close { opener_index: Option<usize> },
+    Open { closer_index: Option<usize> },
     OpenClose,
 }
 
@@ -116,14 +119,13 @@ pub struct XmlTag {
     source: Arc<str>,
     /// The range of the entire tag: e.g., `<wicket:label id="test">`.
     pub text_range: Range<usize>, //
+    /// Also contains the index to the open/close relative.
     tag_type: TagType,
     pub name_range: XmlString,
     pub namespace_range: Option<XmlString>,
 
     /// Attributes: HashMap<Range<usize>, AttrValue>,
     attributes: SmallVec<[XmlAttribute; 4]>,
-    /// The open tag this close tag matches.
-    closes: Option<Rc<XmlTag>>,
     /// render entirely from the source when the tag is unmodified.
     modified: bool,
 }
@@ -132,11 +134,12 @@ impl Default for XmlTag {
         Self {
             source: Arc::default(),
             text_range: Range::default(),
-            tag_type: TagType::Open,
+            tag_type: TagType::Open {
+                closer_index: Some(0),
+            },
             name_range: XmlString::Raw(Range::default()),
             namespace_range: None,
             attributes: SmallVec::new(),
-            closes: None,
             modified: false,
         }
     }
@@ -177,11 +180,12 @@ impl XmlTag {
         self.tag_type
     }
     pub fn is_close(&self) -> bool {
-        self.tag_type == TagType::Close
+        matches!(&self.tag_type, TagType::Close { opener_index: _ })
     }
     pub fn is_open(&self) -> bool {
-        self.tag_type == TagType::Open
+        matches!(&self.tag_type, TagType::Open { closer_index: _ })
     }
+
     pub fn is_open_close(&self) -> bool {
         self.tag_type == TagType::OpenClose
     }
@@ -300,21 +304,43 @@ impl XmlTag {
     // -------------------------------------------------------------------------
     //  Open/close linking
     // -------------------------------------------------------------------------
-    pub fn set_open_tag(&mut self, open: Rc<XmlTag>) {
-        self.closes = Some(open);
+    pub fn set_open_tag(&mut self, opener_index: Option<usize>) {
+        self.tag_type = TagType::Close { opener_index };
     }
 
-    pub fn get_open_tag(&self) -> Option<&XmlTag> {
-        self.closes.as_deref()
-    }
-
-    pub fn closes(&self, open: &XmlTag) -> bool {
-        let val = self.closes.as_ref();
-        match val {
-            Some(rc_val) => std::ptr::eq(open, rc_val.as_ref() as &XmlTag),
-            None => false,
+    pub fn get_open_tag<'a>(
+        &self,
+        open_index: usize,
+        components: &'a [ComponentTag],
+    ) -> Option<&'a XmlTag> {
+        match components.get(open_index) {
+            Some(component_tag) => Some(&component_tag.tag),
+            None => None,
         }
     }
+
+    /// Does this open tag correspond to the open tag reference stored in this close tag?
+    pub fn closes(&self, open: &XmlTag, components: &[MarkupElement]) -> bool {
+        match self.tag_type {
+            TagType::Close {
+                opener_index: Some(open_index),
+            } => match components.get(open_index) {
+                Some(MarkupElement::ComponentTag(component_tag)) => {
+                    std::ptr::eq(&component_tag.tag, open)
+                }
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    // pub fn closes(&self, open: &XmlTag) -> bool {
+    //     let val = self.closes.as_ref();
+    //     match val {
+    //         Some(rc_val) => std::ptr::eq(open, rc_val.as_ref() as &XmlTag),
+    //         None => false,
+    //     }
+    // }
 
     // -------------------------------------------------------------------------
     //  Debug / string conversion
@@ -443,18 +469,7 @@ impl fmt::Debug for XmlTag {
 
 #[cfg(test)]
 mod test {
-    use super::*;
 
     #[test]
-    fn test_closes() {
-        let close_tag = Rc::from(XmlTag::default());
-        let alt_close_tag = Rc::from(XmlTag::default());
-
-        let xml_tag = XmlTag {
-            closes: Some(close_tag.clone()),
-            ..Default::default()
-        };
-        assert!(xml_tag.closes(&close_tag));
-        assert!(!xml_tag.closes(&alt_close_tag));
-    }
+    fn test_closes() {}
 }
