@@ -73,11 +73,12 @@ impl MarkupParser {
 
     /// The main loop that processes the entire resource
     pub fn parse_markup(&mut self) -> Result<Vec<MarkupElement>, ParseException> {
+        let mut stack: Vec<usize> = Vec::new(); // Store indices of open tags
         let mut markup: Vec<MarkupElement> = Vec::new();
 
         loop {
             // Get the next element from the filter chain.
-            let tag = match self.get_next_tag()? {
+            let mut tag = match self.get_next_tag()? {
                 // Stop if we hit EOF (None)
                 None => break,
                 Some(MarkupElement::ComponentTag(component_tag)) => component_tag,
@@ -87,13 +88,19 @@ impl MarkupParser {
                 }
                 Some(MarkupElement::RawMarkup(_)) => unreachable!(),
             };
-            //Add the tag if it contains a wicket id.
-            let mut add = !tag.get_id().is_empty();
 
-            // Add the tag when it is a close for a wicket tag.
+            let is_wicket_tag = !tag.get_id().is_empty();
+            let mut add = is_wicket_tag || tag.is_modified();
+
+            //Check we add the opener for this close
             if !add && tag.tag.is_close() {
-                add = tag.get_open_tag().is_some()
-                    && !&tag.get_open_tag().as_ref().unwrap().get_id().is_empty();
+                if let Some(&opener_idx) = stack.last() {
+                    // If the opener exists in our markup vector, check if it was marked for inclusion.
+                    if let MarkupElement::ComponentTag(ref _open_tag) = markup[opener_idx] {
+                        // If the opener was added (for ID OR modification), we must add this closer.
+                        add = true;
+                    }
+                }
             }
 
             // The tag is also added if it has been modified by a wicket filter.
@@ -103,10 +110,10 @@ impl MarkupParser {
                     .xml_parser
                     .get_range_from_position_marker(tag.tag.pos());
                 if !text_range.is_empty() {
-                    // Check if the previous element in the Vec was also RawMarkup and extend it's
-                    // range if it is to include the text from this next tag.
+                    // Check if the previous element in the Vec was also RawMarkup. If so, extend it's
+                    // range. Otherwise just add the new raw.
                     if let Some(MarkupElement::RawMarkup(last_raw)) = markup.last_mut() {
-                        // Optimization: If they are contiguous in the source Arc, just extend the range
+                        // If they are contiguous in the source Arc, just extend the range.
                         if last_raw.text_range.end == text_range.start {
                             last_raw.text_range.end = text_range.end;
                         } else {
@@ -117,6 +124,21 @@ impl MarkupParser {
                     }
                 }
                 self.xml_parser.set_position_marker_default();
+                if tag.tag.is_open() {
+                    let current_idx = markup.len();
+                    stack.push(current_idx);
+                } else if tag.tag.is_close() {
+                    if let Some(opener_idx) = stack.pop() {
+                        let current_idx = markup.len();
+                        // Set the close tag's relation.
+                        tag.tag.set_open_tag(Some(opener_idx));
+                        // Adjust the open tag to point to this close tag.
+                        if let MarkupElement::ComponentTag(ref mut open_tag) = markup[opener_idx] {
+                            open_tag.tag.set_open_tag(Some(current_idx));
+                        }
+                    }
+                }
+
                 markup.push(MarkupElement::ComponentTag(tag));
             }
         }
