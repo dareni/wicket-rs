@@ -144,6 +144,20 @@ pub enum ParseException {
         "Error parsing attributes! Unquoted value found for tag at line {line}, column {column}"
     )]
     AttributeValueUnquotedParseError { line: usize, column: usize },
+    #[error("No open tag to match the closing tag found at at (line {line}, column {column}) at position {position}.")]
+    NoOpenTag {
+        line: usize,
+        column: usize,
+        position: usize,
+    },
+    #[error("The open tag name '{open_name}' does not match the closing tag name '{close_name}' found at (line {line}, column {column}) at position {position}.")]
+    UnmatchedTagName {
+        close_name: String,
+        open_name: String,
+        line: usize,
+        column: usize,
+        position: usize,
+    },
 }
 
 impl FullyBufferedReader {
@@ -222,6 +236,7 @@ impl FullyBufferedReader {
         &self.input
     }
 
+    /// Return the (row, column) count of the string.
     pub fn count_lines_in_str(input: &str) -> (usize, usize) {
         let input_chars = input.chars();
         let mut line_number = 0;

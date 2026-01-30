@@ -83,13 +83,12 @@ impl XmlAttribute {
 }
 
 /// Use as much of the original xml markup as possible, any changes to the original are stored as
-///required.
+/// required.
 #[derive(Debug)]
 pub enum XmlString {
-    /// The "Zero-Copy" king. Points back to the original HTML source.
+    /// Points to the original HTML source.
     Raw(Range<usize>),
     /// The variant used for changes made by MarkupFilters.
-    /// Clones on request are just atomic pointer increments.
     Modified(Arc<String>),
     /// The Component request-local modifications.
     Dynamic(String),
@@ -198,6 +197,7 @@ impl XmlTag {
         self.tag_type == TagType::OpenClose
     }
 
+    /// The text for the tag.
     pub fn text(&self) -> &str {
         &self.source[self.text_range.clone()]
     }
@@ -213,8 +213,9 @@ impl XmlTag {
         FullyBufferedReader::count_lines_in_str(&self.source)
     }
 
+    /// The starting postion of the tag (the less than symbol) in the original markup.
     pub fn pos(&self) -> usize {
-        self.text_range.start
+        self.text_range.start - 1
     }
     pub fn length(&self) -> usize {
         self.text_range.len()
@@ -341,14 +342,6 @@ impl XmlTag {
             _ => false,
         }
     }
-
-    // pub fn closes(&self, open: &XmlTag) -> bool {
-    //     let val = self.closes.as_ref();
-    //     match val {
-    //         Some(rc_val) => std::ptr::eq(open, rc_val.as_ref() as &XmlTag),
-    //         None => false,
-    //     }
-    // }
 
     // -------------------------------------------------------------------------
     //  Debug / string conversion

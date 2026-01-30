@@ -15,7 +15,10 @@ pub(crate) use crate::wicket::{
     },
     settings::MarkupSettings,
 };
-use wicket_util::wicket::util::parse::metapattern::{Pattern, RegexFlags};
+use wicket_util::wicket::util::{
+    collections::io::fully_buffered_reader::FullyBufferedReader,
+    parse::metapattern::{Pattern, RegexFlags},
+};
 use wicket_util::{
     static_pattern, wicket::util::collections::io::fully_buffered_reader::ParseException,
 };
@@ -130,17 +133,63 @@ impl MarkupParser {
                 } else if tag.tag.is_close() {
                     if let Some(opener_idx) = stack.pop() {
                         let current_idx = markup.len();
-                        // Set the close tag's relation.
-                        tag.tag.set_open_tag(Some(opener_idx));
                         // Adjust the open tag to point to this close tag.
                         if let MarkupElement::ComponentTag(ref mut open_tag) = markup[opener_idx] {
+                            if open_tag.tag.name() != tag.tag.name() {
+                                let position = tag.tag.pos();
+                                let (line, column) = FullyBufferedReader::count_lines_in_str(
+                                    &tag.tag.source()[..position],
+                                );
+                                let close_name = tag.tag.name().into_owned();
+                                let open_name = open_tag.tag.name().into_owned();
+
+                                return Err(ParseException::UnmatchedTagName {
+                                    close_name,
+                                    open_name,
+                                    line,
+                                    column,
+                                    position,
+                                });
+                            }
                             open_tag.tag.set_open_tag(Some(current_idx));
                         }
+                        // Set the close tag's relation.
+                        tag.tag.set_open_tag(Some(opener_idx));
+                    } else {
+                        let position = tag.tag.pos();
+                        let (line, column) =
+                            FullyBufferedReader::count_lines_in_str(&tag.tag.source()[..position]);
+                        return Err(ParseException::NoOpenTag {
+                            line,
+                            column,
+                            position,
+                        });
                     }
                 }
-
                 markup.push(MarkupElement::ComponentTag(tag));
             }
+        }
+        // The stack should be empty.
+        if !stack.is_empty() {
+            if let Some(MarkupElement::ComponentTag(ct)) = markup
+                .iter()
+                .find(|x| matches!(x, MarkupElement::ComponentTag(_)))
+            {
+                let source = ct.tag.source();
+                let position = source.len();
+
+                let (line, column) = FullyBufferedReader::count_lines_in_str(&source[..position]);
+
+                return Err(ParseException::NoOpenTag {
+                    line,
+                    column,
+                    position,
+                });
+            } else {
+                unreachable!(
+                    "The stack can not contain an element without having a Markup ComponentTag."
+                )
+            };
         }
 
         Ok(markup)
