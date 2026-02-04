@@ -678,6 +678,17 @@ impl XmlPullParser {
                     }
 
                     let value_range = val_start..cursor;
+                    if has_surrounding_whitespace(&bytes[value_range.clone()]) {
+                        let position = content_position.start + cursor;
+                        let (line, column) =
+                            FullyBufferedReader::count_lines_in_str(&content[0..position]);
+
+                        return Err(ParseException::SurroundingWhitespace {
+                            line,
+                            column,
+                            position,
+                        });
+                    }
                     if cursor < bytes.len() {
                         cursor += 1;
                     } // skip closing quote
@@ -696,10 +707,13 @@ impl XmlPullParser {
             }
 
             if finding_open_quote || finding_close_quote {
-                let (line, column) = FullyBufferedReader::count_lines_in_str(
-                    &content[0..content_position.start + cursor],
-                );
-                return Err(ParseException::AttributeValueUnquotedParseError { line, column });
+                let position = content_position.start + cursor;
+                let (line, column) = FullyBufferedReader::count_lines_in_str(&content[0..position]);
+                return Err(ParseException::AttributeValueUnquotedParseError {
+                    line,
+                    column,
+                    position,
+                });
             }
         }
         Ok(pairs)
@@ -829,11 +843,35 @@ pub enum HttpTagType {
     Special,
 }
 
+pub fn has_surrounding_whitespace(bytes: &[u8]) -> bool {
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        let mut chars = s.chars();
+        // let begin = chars.next();
+        if !chars.next().is_some_and(|c| c.is_whitespace()) {
+            if !chars.next_back().is_some_and(|c| c.is_whitespace()) {
+                return false;
+            }
+            return true;
+        }
+        true
+    } else {
+        false
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
 
     use crate::wicket::markup::parser::xml_pull_parser::XmlPullParser;
+
+    #[test]
+    pub fn test_surrounding_whitespace() {
+        assert!(has_surrounding_whitespace(" abcd".as_bytes()));
+        assert!(has_surrounding_whitespace("abcd ".as_bytes()));
+        assert!(!has_surrounding_whitespace("".as_bytes()));
+        assert!(!has_surrounding_whitespace("abc".as_bytes()));
+    }
 
     #[test]
     pub fn basics() {
@@ -998,7 +1036,8 @@ mod test {
             error,
             ParseException::AttributeValueUnquotedParseError {
                 line: 0,
-                column: 10
+                column: 10,
+                position: 10,
             },
         ));
 
@@ -1038,6 +1077,11 @@ mod test {
         assert!(matches!(
             parser.next_tag(),
             Err(ParseException::AttributeExists { .. })
+        ));
+        parser = XmlPullParser::new("<tag attr=' 1234'>".to_owned());
+        assert!(matches!(
+            parser.next_tag(),
+            Err(ParseException::SurroundingWhitespace { .. })
         ));
     }
 

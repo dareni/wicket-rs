@@ -143,8 +143,18 @@ pub enum ParseException {
     #[error(
         "Error parsing attributes! Unquoted value found for tag at line {line}, column {column}"
     )]
-    AttributeValueUnquotedParseError { line: usize, column: usize },
-    #[error("No open tag to match the closing tag found at at (line {line}, column {column}) at position {position}.")]
+    AttributeValueUnquotedParseError {
+        line: usize,
+        column: usize,
+        position: usize,
+    },
+    #[error("No open tag to match the closing tag found at (line {line}, column {column}) at position {position}.")]
+    SurroundingWhitespace {
+        line: usize,
+        column: usize,
+        position: usize,
+    },
+    #[error("The quoted value has whitespace  prepended or appended at (line {line}, column {column}) at position {position}.")]
     NoOpenTag {
         line: usize,
         column: usize,
