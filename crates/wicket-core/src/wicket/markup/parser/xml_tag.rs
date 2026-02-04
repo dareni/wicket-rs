@@ -225,10 +225,11 @@ impl XmlTag {
         FullyBufferedReader::count_lines_in_str(&self.source)
     }
 
-    /// The starting postion of the tag (the less than symbol) in the original markup.
+    /// The starting postion of the tag name after the less than symbol) in the original markup.
     pub fn pos(&self) -> usize {
-        self.text_range.start - 1
+        self.text_range.start
     }
+
     pub fn length(&self) -> usize {
         self.text_range.len()
     }
