@@ -92,7 +92,7 @@ impl MarkupParser {
                 Some(MarkupElement::RawMarkup(_)) => unreachable!(),
             };
 
-            let is_wicket_tag = !tag.get_id().is_empty();
+            let is_wicket_tag = tag.wicket.is_some();
             let mut add = is_wicket_tag || tag.is_modified();
 
             //Check we add the opener for this close

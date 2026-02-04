@@ -9,7 +9,7 @@ use wicket_request::wicket::request::Response;
 
 use crate::wicket::behavior::Behavior;
 use crate::wicket::markup::parser::filter::HtmlHandler;
-use crate::wicket::markup::parser::xml_tag::{TagType, XmlTag};
+use crate::wicket::markup::parser::xml_tag::{AttrValue, TagType, XmlTag};
 use crate::wicket::{Component, MarkupContainer};
 
 bitflags! {
@@ -28,6 +28,13 @@ bitflags! {
 
 pub trait AutoComponentFactory {
     fn new_component(container: &MarkupContainer, tag: &ComponentTag);
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct WicketTag {
+    pub id: Option<AttrValue>, // The 'wicket:id'
+    pub is_auto_link: bool,    // For <wicket:link>
+    pub variation: Option<String>,
 }
 
 pub enum MarkupElement {
@@ -66,9 +73,8 @@ pub struct ComponentTag {
     /// Boolean flags.
     pub flags: ComponentTagFlags,
 
-    /// By default this is equal to the wicket:id="xxx" attribute value, but may be provided e.g. for
-    /// auto-tags
-    pub id: String,
+    /// Framework metadata.
+    pub wicket: Option<WicketTag>,
 
     /// In case of inherited markup, the base and the extended markups are merged and the information
     /// about the tags origin is lost. In some cases like wicket:head and wicket:link this
@@ -88,7 +94,7 @@ impl Default for ComponentTag {
             open_tag: Option::None,
             tag: XmlTag::new(),
             flags: ComponentTagFlags::NONE,
-            id: "".to_owned(),
+            wicket: None,
             markup_ref: Option::None,
             behaviors: Option::None,
             user_data: Option::None,
@@ -164,9 +170,25 @@ impl ComponentTag {
         (self.flags & ComponentTagFlags::AUTOLINK).is_empty()
     }
 
+    /// Helper to access the Wicket ID easily
+    pub fn id_attr(&self) -> Option<&AttrValue> {
+        self.wicket.as_ref().and_then(|w| w.id.as_ref())
+    }
+
     /// Get the component id.
-    pub fn get_id(&self) -> &String {
-        &self.id
+    pub fn id_str(&self) -> Option<&str> {
+        match &self.id_attr() {
+            Some(value) => Some(value.to_str(self.tag.source())),
+            None => None,
+        }
+    }
+    pub fn enable_wicket(&mut self) -> &mut WicketTag {
+        self.tag.set_modified();
+        self.wicket.get_or_insert(WicketTag {
+            id: None,
+            is_auto_link: false,
+            variation: None,
+        })
     }
 
     /// Get the open tag.
@@ -186,12 +208,6 @@ impl ComponentTag {
         }
     }
 
-    /// St the id of the component. The value is usuall taken from the tag id attribute e.g.
-    /// wicket:id="componentid".
-    pub fn set_id(&mut self, id: &str) {
-        self.id = id.into();
-    }
-
     pub fn write_synthetic_close_tag(&self, response: &Response) {
         response.write("</");
         if let Some(ns) = self.get_xml_tag().namespace() {
@@ -202,50 +218,6 @@ impl ComponentTag {
         response.write(">");
     }
 
-    /// Write tag to response.
-    /// When strip_wicket_attributes is true, wicket:id is removed from the output.
-    /// The default namespace is 'wicket'.
-    pub fn write_output(
-        &self,
-        response: &Response,
-        strip_wicket_attributes: bool,
-        namespace: &str,
-    ) {
-        response.write("<");
-        if self.get_xml_tag().tag_type().eq(&TagType::Close) {
-            response.write("/");
-        }
-        if let Some(ns) = self.get_xml_tag().namespace() {
-            response.write(ns.as_ref());
-            response.write(":");
-        }
-        response.write(self.get_xml_tag().name().as_ref());
-        let mut namespace_prefix: Option<Rc<String>> = None;
-        if strip_wicket_attributes {
-            namespace_prefix = Some(Rc::from(format!("{}:", namespace).to_owned()));
-        }
-        if self.get_xml_tag().has_attributes() {
-            for xml_attribute in self.get_xml_tag().get_attributes().iter() {
-                if namespace_prefix
-                    .as_deref()
-                    .is_none_or(|nsp| !xml_attribute.key_starts_with(self.tag.source(), nsp))
-                {
-                    //Write the attribute when it is not a wicket attribute.
-                    //If it is a wicket attrib only write it when we are not stripping them.
-                    let key = xml_attribute.key(self.tag.source());
-                    let value = xml_attribute.value(self.tag.source());
-                    response.write(" ");
-                    response.write(key);
-                    response.write(r#"=""#);
-                    response.write(value);
-                    response.write(r#"\"""#);
-                }
-            }
-        }
-        if self.get_xml_tag().tag_type().eq(&TagType::OpenClose) {
-            response.write("/");
-            response.write(">");
-        }
     }
 
     /// Return the underlying xml tag.

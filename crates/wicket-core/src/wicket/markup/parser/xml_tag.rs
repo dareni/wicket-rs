@@ -30,12 +30,21 @@ pub struct TextSegment {
     pub text: Option<Rc<str>>, // shared, immutable string slice
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AttrValue {
     /// Zero-copy: just the coordinates in the Arc<str>.
     Raw(Range<usize>),
     /// Processed: the unescaped result.
     Unescaped(String),
+}
+
+impl AttrValue {
+    pub fn to_str<'a>(&'a self, source: &'a str) -> &'a str {
+        match &self {
+            AttrValue::Raw(range) => &source[range.clone()],
+            AttrValue::Unescaped(unescaped) => unescaped.as_str(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -176,6 +185,9 @@ impl XmlTag {
             tag_type,
             ..Default::default()
         }
+    }
+    pub fn set_modified(&mut self) {
+        self.modified = true;
     }
 }
 
