@@ -75,7 +75,7 @@ impl MarkupParser {
     }
 
     /// The main loop that processes the entire resource
-    pub fn parse_markup(&mut self) -> Result<Vec<MarkupElement>, ParseException> {
+    pub fn parse_markup(&mut self) -> Result<Vec<MarkupElement>, WicketException> {
         let mut stack: Vec<usize> = Vec::new(); // Store indices of open tags
         let mut markup: Vec<MarkupElement> = Vec::new();
 
@@ -143,7 +143,7 @@ impl MarkupParser {
                                 let close_name = tag.tag.name().into_owned();
                                 let open_name = open_tag.tag.name().into_owned();
 
-                                return Err(ParseException::UnmatchedTagName {
+                                return Err(WicketException::UnmatchedTagName {
                                     close_name,
                                     open_name,
                                     line,
@@ -159,7 +159,7 @@ impl MarkupParser {
                         let position = tag.tag.pos();
                         let (line, column) =
                             FullyBufferedReader::count_lines_in_str(&tag.tag.source()[..position]);
-                        return Err(ParseException::NoOpenTag {
+                        return Err(WicketException::NoOpenTag {
                             line,
                             column,
                             position,
@@ -180,7 +180,7 @@ impl MarkupParser {
 
                 let (line, column) = FullyBufferedReader::count_lines_in_str(&source[..position]);
 
-                return Err(ParseException::NoOpenTag {
+                return Err(WicketException::NoOpenTag {
                     line,
                     column,
                     position,
@@ -195,7 +195,7 @@ impl MarkupParser {
         Ok(markup)
     }
 
-    pub fn get_next_tag(&mut self) -> Result<Option<MarkupElement>, ParseException> {
+    pub fn get_next_tag(&mut self) -> Result<Option<MarkupElement>, WicketException> {
         // Check internal buffer first (items created by previous filter expansions)
         if let Some(elem) = self.queue.pop_front() {
             return Ok(Some(elem));
