@@ -260,6 +260,16 @@ impl XmlTag {
         None
     }
 
+    /// Get the value in the form of AttrValue
+    pub fn get_attribute_attrvalue(&self, key: &str) -> Option<AttrValue> {
+        for xml_attribute in &self.attributes {
+            if xml_attribute.eq_key(&self.source, key) {
+                return Some(xml_attribute.value.clone());
+            }
+        }
+        None
+    }
+
     pub fn put_attribute(&mut self, attrib: XmlAttribute) -> Result<(), ParseException> {
         // Check the attribute does not already exist before adding it.
         for existing_attrib in &self.attributes {

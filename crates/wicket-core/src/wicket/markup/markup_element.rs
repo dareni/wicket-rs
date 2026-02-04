@@ -58,6 +58,12 @@ pub struct SpecialTag {
     pub tag: XmlTag,
 }
 
+impl MarkupElement {
+    pub fn get_request_unique_id() -> String {
+        unimplemented!();
+    }
+}
+
 /// A subclass of MarkupElement which represents a "significant" markup tag, such as a component open
 /// tag. Insignificant markup tags (those which are merely concerned with markup formatting
 /// operations and do not denote components or component nesting) are coalesced into instances of
@@ -218,6 +224,11 @@ impl ComponentTag {
         response.write(">");
     }
 
+    /// Very cheap copy because it should be mostly enums and ranges.
+    /// Each clone my be modified per request.
+    pub fn shadow_copy(&self) -> Self {
+        //TODO:
+        ComponentTag::default()
     }
 
     /// Return the underlying xml tag.

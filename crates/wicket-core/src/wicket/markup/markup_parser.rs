@@ -1,27 +1,31 @@
-use crate::wicket::markup::markup_element::RawMarkup;
 use std::borrow::Cow;
 use std::collections::VecDeque;
 
 use once_cell::sync::Lazy;
 
-use crate::wicket::markup::{
-    markup_element::{ComponentTag, MarkupElement, SpecialTag},
-    parser::{xml_pull_parser::HttpTagType, FilterResult},
-};
-pub(crate) use crate::wicket::{
+use crate::wicket::{
     markup::{
-        parser::{xml_pull_parser::XmlPullParser, MarkupFilter},
+        markup_element::{ComponentTag, MarkupElement, RawMarkup, SpecialTag},
+        parser::{
+            filter::{FilterResult, MarkupFilter},
+            xml_pull_parser::{HttpTagType, XmlPullParser},
+            WicketException,
+        },
         Markup,
     },
     settings::MarkupSettings,
 };
-use wicket_util::wicket::util::{
-    collections::io::fully_buffered_reader::FullyBufferedReader,
-    parse::metapattern::{Pattern, RegexFlags},
-};
 use wicket_util::{
-    static_pattern, wicket::util::collections::io::fully_buffered_reader::ParseException,
+    static_pattern,
+    wicket::util::{
+        collections::io::fully_buffered_reader::FullyBufferedReader,
+        parse::metapattern::{Pattern, RegexFlags},
+    },
 };
+
+/// The wicket namespace, hardcoded for simplicity, will anyone care?
+pub static WICKET_ID: &str = "wicket:id";
+pub static WICKET: &str = "wicket";
 
 // Opening a conditional comment section, which is NOT treated as a comment section
 static_pattern!(
@@ -230,7 +234,7 @@ impl MarkupParser {
 
             // Iterate through the filter chain.
             for filter in &mut self.filters {
-                match filter.process(&mut current_item) {
+                match filter.process(current_item)? {
                     FilterResult::Keep(modified) => {
                         current_item = *modified; // Continue to next filter
                     }
