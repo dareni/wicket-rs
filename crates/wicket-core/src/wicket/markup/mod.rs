@@ -5,6 +5,7 @@ pub mod parser;
 
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
+use std::io::{self, Write};
 use std::sync::Arc;
 use wicket_util::wicket::util::parse::metapattern::Pattern;
 
@@ -38,6 +39,39 @@ impl Markup {
     ///TODO: implement Markup
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Render from here.
+    /// Move away from distributed render MarkupStream, MarkupContainer, MarkupResponse
+    pub fn render<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        for element in &self.elements {
+            match element {
+                // The "Super-Slice" Win: High-speed block copy
+                MarkupElement::RawMarkup(raw) => {
+                    writer.write_all(self.source[raw.text_range.clone()].as_bytes())?;
+                }
+
+                // The Dynamic Part:
+                MarkupElement::ComponentTag(tag) => {
+                    if tag.wicket.is_some() {
+                        // It's a non-wicket tag that was modified
+                        // Render it directly and continue
+                        writer.write_all(tag.tag.to_xml_string().as_bytes())?;
+                    } else {
+                        // It's a real Wicket Component
+                        // Find the component in the page hierarchy
+                        // Call component.render(tag, writer)
+                        writer.write_all([b'<'].as_ref())?;
+                        writer.write_all(self.source[tag.tag.pos()..].as_bytes())?;
+                        let _clone = tag.shadow_copy();
+                        //TODO: Let each component render it's dynamic content.
+                        //component_registry.render_component(wicket_id, clone, writer)?;
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 }
 
