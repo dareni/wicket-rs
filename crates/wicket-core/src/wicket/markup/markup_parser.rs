@@ -1,5 +1,5 @@
-use std::borrow::Cow;
 use std::collections::VecDeque;
+use std::{borrow::Cow, io::Read};
 
 use once_cell::sync::Lazy;
 
@@ -18,7 +18,7 @@ use crate::wicket::{
 use wicket_util::{
     static_pattern,
     wicket::util::{
-        collections::io::fully_buffered_reader::FullyBufferedReader,
+        collections::io::fully_buffered_reader::{FullyBufferedReader, ParseException},
         parse::metapattern::{Pattern, RegexFlags},
     },
 };
@@ -76,6 +76,15 @@ impl MarkupParser {
             xml_parser: XmlPullParser::new(input),
             ..Default::default()
         }
+    }
+
+    pub fn new_stream(input: impl Read, input_size: usize) -> Result<Self, ParseException> {
+        let xml_parser = XmlPullParser::new_stream(input, input_size)?;
+
+        Ok(Self {
+            xml_parser,
+            ..Default::default()
+        })
     }
 
     /// The main loop that processes the entire resource
