@@ -269,3 +269,74 @@ impl MarkupParser {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    pub fn wicket_tag() {
+        assert!(MarkupParser::new("<span wicket:id=\"test\"/>".to_owned())
+            .parse_markup()
+            .is_ok());
+
+        assert!(
+            MarkupParser::new("<span wicket:id=\"test\">Body</span>".to_owned())
+                .parse_markup()
+                .is_ok()
+        );
+        assert!(
+            MarkupParser::new("This is a test <span wicket:id=\"test\"/>".to_owned())
+                .parse_markup()
+                .is_ok()
+        );
+        assert!(MarkupParser::new(
+            "This is a test <span wicket:id=\"test\">Body</span>".to_owned()
+        )
+        .parse_markup()
+        .is_ok());
+        assert!(MarkupParser::new(
+            "<a wicket:id=\"[autolink]\" href=\"test.html\">Home</a>".to_owned()
+        )
+        .parse_markup()
+        .is_ok());
+        assert!(MarkupParser::new("<wicket:body/>".to_owned())
+            .parse_markup()
+            .is_ok());
+        assert!(MarkupParser::new("<wicket:border/>".to_owned())
+            .parse_markup()
+            .is_ok());
+        assert!(MarkupParser::new("<wicket:panel/>".to_owned())
+            .parse_markup()
+            .is_ok());
+        //TODO: Complete <wicket:remove> tag logic tests.
+    }
+
+    //TODO: Add default_wicket_tag() test.
+
+    #[test]
+    pub fn script() {
+        // let  markup = MarkupParser::parse_markup("<html wicket:id=\"test\"><script language=\"JavaScript\">... <x a> ...</script></html>".to_owned());
+        let input = "<html wicket:id=\"test\"><script language=\"JavaScript\">... <x a> ...</script></html>";
+        let markup = MarkupParser::new(input.to_owned()).parse_markup();
+        assert!(markup.as_ref().is_ok_and(|m| m.len() == 5));
+        let markup_vec = markup.unwrap();
+        assert!(
+            matches!(&markup_vec[0], MarkupElement::ComponentTag(ct) if ct.tag.name() == "html")
+        );
+        assert!(
+            matches!(&markup_vec[4], MarkupElement::ComponentTag(ct) if ct.tag.name() == "html")
+        );
+        assert!(
+            matches!(&markup_vec[1], MarkupElement::ComponentTag(ct) if ct.tag.name() == "script")
+        );
+        assert!(
+            matches!(&markup_vec[3], MarkupElement::ComponentTag(ct) if ct.tag.name() == "script")
+        );
+        // match &markup_vec[2] { MarkupElement::RawMarkup(rmu) => print!("rmu {}", &input[rmu.text_range.clone()]), _ => print!("??"), }
+        assert!(
+            matches!(&markup_vec[2], MarkupElement::RawMarkup(rmu) if &input[rmu.text_range.clone()] == "... <x a> ..." )
+        );
+    }
+    //TODO: Complete MarkupParserTest function implmentation.
+}
