@@ -10,17 +10,23 @@ pub fn derive_markup_resource_path(input: TokenStream) -> TokenStream {
     let name = input.ident;
 
     // Build the output tokens using the quote! macro
+    // will expand to the module where the struct is defined,
+    // not where the macro lives.
+
     let expanded = quote! {
-        impl MarkupResourceProvider for #name {
+        impl MarkupResourceLocationUtil for #name {
             fn get_component_path(&self) -> &'static str {
-                // will expand to the module where the struct is defined,
-                // not where the macro lives.
                 module_path!()
             }
 
             fn get_component_name(&self) -> &'static str {
                 stringify!(#name)
             }
+
+            fn get_markup_type(&self) -> &'static str {
+                "html"
+            }
+
         }
     };
 

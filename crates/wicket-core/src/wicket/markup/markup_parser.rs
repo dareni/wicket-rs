@@ -338,5 +338,6 @@ mod test {
             matches!(&markup_vec[2], MarkupElement::RawMarkup(rmu) if &input[rmu.text_range.clone()] == "... <x a> ..." )
         );
     }
-    //TODO: Complete MarkupParserTest function implmentation.
+    //TODO: Complete apache wicket MarkupParserTest function implmentation. Use trait MarkupResourceStreamProvider
+    // for html file parsing tests.
 }
