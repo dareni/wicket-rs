@@ -1,7 +1,8 @@
-use std::{env, fs::File, io, path::PathBuf, sync::OnceLock};
+use std::{env, io, path::PathBuf, sync::OnceLock};
 
-use crate::wicket::core::util::resource::locator::{
-    FileResourceStreamLocator, ResourceStreamLocator,
+use crate::wicket::{
+    core::util::resource::locator::{FileResourceStreamLocator, ResourceStreamLocator},
+    markup::ResourceStream,
 };
 
 static RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -37,9 +38,13 @@ pub trait MarkupResourceStreamProvider {
     fn get_markup_resource_stream<T: MarkupResourceLocationUtil>(
         &self,
         container_component: &T,
-    ) -> io::Result<File> {
+    ) -> io::Result<Box<dyn ResourceStream>> {
         let markup_path = self.get_markup_path(container_component);
-        self.get_locator().locate(&markup_path, None, Some("html"))
+        let ret = self
+            .get_locator()
+            .locate(&markup_path, &None, &Some("html".to_owned()));
+
+        ret
     }
 
     fn get_markup_path<T: MarkupResourceLocationUtil>(&self, component: &T) -> PathBuf {
@@ -101,9 +106,11 @@ mod test {
         let loader = DefaultMarkupResourceStreamProvider::new_default();
         let path = loader.get_markup_path(&tmp_comp);
         assert_eq!(Path::new("wicket/markup/loader/test/AppComponent"), path);
-        let mut file = loader.get_markup_resource_stream(&tmp_comp).unwrap();
+        let mut resource_stream = loader.get_markup_resource_stream(&tmp_comp).unwrap();
+        let stream: &mut dyn Read = resource_stream.get_read();
+
         let mut data = String::new();
-        let result = file.read_to_string(&mut data);
+        let result = stream.read_to_string(&mut data);
         assert_eq!(25, result.unwrap());
         assert_eq!("<div>New Component</div>\n", data);
     }
