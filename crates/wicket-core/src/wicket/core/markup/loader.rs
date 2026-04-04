@@ -1,8 +1,8 @@
 use std::{env, io, path::PathBuf, sync::OnceLock};
 
 use crate::wicket::{
-    core::util::resource::locator::{FileResourceStreamLocator, ResourceStreamLocator},
-    markup::ResourceStream,
+    core::central::util::resource::locator::{FileResourceStreamLocator, ResourceStreamLocator},
+    core::markup::ResourceStream,
 };
 
 static RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -86,7 +86,7 @@ mod test {
     use std::{io::Read, path::Path};
 
     use super::MarkupResourceLocationUtil;
-    use crate::wicket::markup::loader::{
+    use crate::wicket::core::markup::loader::{
         DefaultMarkupResourceStreamProvider, MarkupResourceStreamProvider,
     };
     use wicket_macro::MarkupResourcePath;
@@ -99,13 +99,16 @@ mod test {
 
         assert_eq!("AppComponent", tmp_comp.get_component_name());
         assert_eq!(
-            "wicket_core::wicket::markup::loader::test",
+            "wicket_core::wicket::core::markup::loader::test",
             tmp_comp.get_component_path()
         );
 
         let loader = DefaultMarkupResourceStreamProvider::new_default();
         let path = loader.get_markup_path(&tmp_comp);
-        assert_eq!(Path::new("wicket/markup/loader/test/AppComponent"), path);
+        assert_eq!(
+            Path::new("wicket/core/markup/loader/test/AppComponent"),
+            path
+        );
         let mut resource_stream = loader.get_markup_resource_stream(&tmp_comp).unwrap();
         let stream: &mut dyn Read = resource_stream.get_read();
 

@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::Error;
 use std::path::{Path, PathBuf};
 
-use crate::wicket::markup::{FileResourceStream, ResourceStream};
+use crate::wicket::core::markup::{FileResourceStream, ResourceStream};
 
 /// Abstraction for finding and loading markup resources.
 pub trait ResourceStreamLocator {
@@ -102,7 +102,7 @@ impl ResourceStreamLocator for FileResourceStreamLocator {
 
 #[cfg(test)]
 mod test {
-    use crate::wicket::core::util::resource::locator::FileResourceStreamLocator;
+    use crate::wicket::core::central::util::resource::locator::FileResourceStreamLocator;
     use std::path::Path;
 
     #[test]

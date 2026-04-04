@@ -3,7 +3,7 @@ use std::{borrow::Cow, io::Read};
 
 use once_cell::sync::Lazy;
 
-use crate::wicket::{
+use crate::wicket::core::{
     markup::{
         markup_element::{ComponentTag, MarkupElement, RawMarkup, SpecialTag},
         parser::{
@@ -51,6 +51,7 @@ pub struct MarkupParser {
     pub markup: Markup,
     pub markup_settings: MarkupSettings,
     pub filters: Vec<Box<dyn MarkupFilter>>,
+    // Temporary filter storage for related MarkupElements.
     pub queue: VecDeque<MarkupElement>,
 }
 
@@ -208,7 +209,7 @@ impl MarkupParser {
         Ok(markup)
     }
 
-    pub fn get_next_tag(&mut self) -> Result<Option<MarkupElement>, WicketException> {
+    fn get_next_tag(&mut self) -> Result<Option<MarkupElement>, WicketException> {
         // Check internal buffer first (items created by previous filter expansions)
         if let Some(elem) = self.queue.pop_front() {
             return Ok(Some(elem));

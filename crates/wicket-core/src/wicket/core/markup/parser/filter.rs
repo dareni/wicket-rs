@@ -1,10 +1,10 @@
-use crate::wicket::markup::{
+use crate::wicket::core::markup::{
     markup_element::ComponentTag,
     markup_parser::{WICKET, WICKET_ID},
 };
 use wicket_util::wicket::util::collections::io::fully_buffered_reader::FullyBufferedReader;
 
-use crate::wicket::markup::{
+use crate::wicket::core::markup::{
     markup_element::MarkupElement,
     parser::{xml_tag::AttrValue, WicketException},
     MarkupResourceStream,

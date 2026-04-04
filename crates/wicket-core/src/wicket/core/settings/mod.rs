@@ -1,4 +1,4 @@
-use crate::wicket::{markup::MarkupFactory, MarkupIdGenerator};
+use crate::wicket::core::{markup::MarkupFactory, MarkupIdGenerator};
 
 #[derive(Default)]
 pub struct MarkupSettings {

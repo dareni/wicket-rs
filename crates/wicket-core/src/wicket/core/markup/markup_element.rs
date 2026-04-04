@@ -7,10 +7,10 @@ use std::slice::Iter;
 use bitflags::bitflags;
 use wicket_request::wicket::request::Response;
 
-use crate::wicket::behavior::Behavior;
-use crate::wicket::markup::parser::filter::HtmlHandler;
-use crate::wicket::markup::parser::xml_tag::{AttrValue, TagType, XmlTag};
-use crate::wicket::{Component, MarkupContainer};
+use crate::wicket::core::behavior::Behavior;
+use crate::wicket::core::markup::parser::filter::HtmlHandler;
+use crate::wicket::core::markup::parser::xml_tag::{AttrValue, TagType, XmlTag};
+use crate::wicket::core::{Component, MarkupContainer};
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

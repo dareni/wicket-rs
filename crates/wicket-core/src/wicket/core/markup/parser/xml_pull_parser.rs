@@ -10,8 +10,8 @@ use wicket_util::wicket::util::collections::io::fully_buffered_reader::{
 use wicket_util::wicket::util::parse::metapattern::{XML_DECL, XML_ENCODING};
 use wicket_util::wicket::util::string::strings::unescape_markup;
 
-use crate::wicket::markup::parser::xml_tag::AttrValue;
-use crate::wicket::markup::parser::xml_tag::XmlString;
+use crate::wicket::core::markup::parser::xml_tag::AttrValue;
+use crate::wicket::core::markup::parser::xml_tag::XmlString;
 
 use super::xml_tag::{TagType, XmlTag};
 
@@ -863,7 +863,7 @@ pub fn has_surrounding_whitespace(bytes: &[u8]) -> bool {
 mod test {
     use super::*;
 
-    use crate::wicket::markup::parser::xml_pull_parser::XmlPullParser;
+    use crate::wicket::core::markup::parser::xml_pull_parser::XmlPullParser;
 
     #[test]
     pub fn test_surrounding_whitespace() {

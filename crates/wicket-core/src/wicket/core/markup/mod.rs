@@ -6,7 +6,7 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use wicket_util::wicket::util::parse::metapattern::Pattern;
 
-use crate::wicket::markup::markup_element::MarkupElement;
+use crate::wicket::core::markup::markup_element::MarkupElement;
 use wicket_util::static_pattern;
 
 pub mod loader;

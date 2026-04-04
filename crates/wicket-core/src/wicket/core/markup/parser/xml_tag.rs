@@ -10,7 +10,7 @@ use wicket_util::wicket::util::collections::io::fully_buffered_reader::{
 };
 use wicket_util::wicket::util::string::strings::escape_markup;
 
-use crate::wicket::markup::markup_element::{ComponentTag, MarkupElement};
+use crate::wicket::core::markup::markup_element::{ComponentTag, MarkupElement};
 
 /// The three possible tag kinds.
 /// Store an index into Markup.components for the relative tag.
