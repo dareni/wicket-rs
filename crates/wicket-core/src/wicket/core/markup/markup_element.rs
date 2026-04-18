@@ -5,8 +5,8 @@ use std::rc::Rc;
 use std::slice::Iter;
 
 use bitflags::bitflags;
-use wicket_request::wicket::request::Response;
 
+use crate::request::Response;
 use crate::wicket::core::behavior::Behavior;
 use crate::wicket::core::markup::parser::filter::HtmlHandler;
 use crate::wicket::core::markup::parser::xml_tag::{AttrValue, TagType, XmlTag};
