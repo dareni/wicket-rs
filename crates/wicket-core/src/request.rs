@@ -8,8 +8,9 @@ use http::request::Parts;
 use url::Url;
 
 use crate::request::cycle::RequestCycle;
-use crate::request::mapper::{BookmarkableMapper, MountedMapper, PackageMapper, ResourceMapper};
-use crate::wicket::core::SystemMapper;
+use crate::request::mapper::{
+    BookmarkableMapper, MountedMapper, PackageMapper, ResourceMapper, SystemMapper,
+};
 
 pub enum Body {
     None,

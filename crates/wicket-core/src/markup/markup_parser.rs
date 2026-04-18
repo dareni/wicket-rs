@@ -1,0 +1,343 @@
+use std::collections::VecDeque;
+use std::{borrow::Cow, io::Read};
+
+use once_cell::sync::Lazy;
+
+use crate::{
+    markup::{
+        markup_element::{ComponentTag, MarkupElement, RawMarkup, SpecialTag},
+        parser::{
+            filter::{FilterResult, MarkupFilter},
+            xml_pull_parser::{HttpTagType, XmlPullParser},
+            WicketException,
+        },
+        Markup,
+    },
+    settings::MarkupSettings,
+};
+use wicket_util::parse::metapattern::core::Pattern;
+use wicket_util::{
+    collections::io::fully_buffered_reader::{FullyBufferedReader, ParseException},
+    parse::metapattern::core::RegexFlags,
+    static_pattern,
+};
+
+/// The wicket namespace, hardcoded for simplicity, will anyone care?
+pub static WICKET_ID: &str = "wicket:id";
+pub static WICKET: &str = "wicket";
+
+// Opening a conditional comment section, which is NOT treated as a comment section
+static_pattern!(
+    CONDITIONAL_COMMENT_OPENING,
+    r"(s?)^[^>]*?<!--\[if.*?\]>(-->)?(<!.*?-->)?"
+);
+
+pub static PRE_BLOCK: Lazy<Pattern> = Lazy::new(|| {
+    Pattern::new_with_flags(
+        r"<pre>.*?</pre>".into(),
+        &RegexFlags::DOT_MATCHES_NEW_LINE.union(RegexFlags::MULTI_LINE),
+    )
+});
+
+static_pattern!(SPACE_OR_TAB_PATTERN, r"[ \\t]+");
+static_pattern!(NEW_LINE_PATTERN, r"( ?[\\r\\n] ?)+");
+
+pub struct MarkupParser {
+    pub xml_parser: XmlPullParser,
+    // The markup handler chain: each filter has a specific task.
+    pub markup_filter_chain: Vec<Box<dyn MarkupFilter>>,
+    // The maarkup created from the input markup file.
+    pub markup: Markup,
+    pub markup_settings: MarkupSettings,
+    pub filters: Vec<Box<dyn MarkupFilter>>,
+    // Temporary filter storage for related MarkupElements.
+    pub queue: VecDeque<MarkupElement>,
+}
+
+impl Default for MarkupParser {
+    fn default() -> Self {
+        let markup_filter_chain: Vec<Box<dyn MarkupFilter>> = Vec::with_capacity(10);
+        Self {
+            xml_parser: Default::default(),
+            markup_filter_chain,
+            markup: Markup::new(),
+            markup_settings: MarkupSettings::default(),
+            filters: Default::default(),
+            queue: Default::default(),
+        }
+    }
+}
+
+impl MarkupParser {
+    //TODO: Add postProcess() and filter chain configuration.
+
+    pub fn new(input: String) -> Self {
+        Self {
+            xml_parser: XmlPullParser::new(input),
+            ..Default::default()
+        }
+    }
+
+    pub fn new_stream(input: impl Read, input_size: usize) -> Result<Self, ParseException> {
+        let xml_parser = XmlPullParser::new_stream(input, input_size)?;
+
+        Ok(Self {
+            xml_parser,
+            ..Default::default()
+        })
+    }
+
+    /// The main loop that processes the entire resource
+    pub fn parse_markup(&mut self) -> Result<Vec<MarkupElement>, WicketException> {
+        let mut stack: Vec<usize> = Vec::new(); // Store indices of open tags
+        let mut markup: Vec<MarkupElement> = Vec::new();
+
+        loop {
+            // Get the next element from the filter chain.
+            let mut tag = match self.get_next_tag()? {
+                // Stop if we hit EOF (None)
+                None => break,
+                Some(MarkupElement::ComponentTag(component_tag)) => component_tag,
+
+                Some(MarkupElement::SpecialTag(special_tag)) => {
+                    ComponentTag::from_xml_tag(special_tag.tag)
+                }
+                Some(MarkupElement::RawMarkup(_)) => unreachable!(),
+            };
+
+            let is_wicket_tag = tag.wicket.is_some();
+            let mut add = is_wicket_tag || tag.is_modified();
+
+            //Check we add the opener for this close
+            if !add && tag.tag.is_close() {
+                if let Some(&opener_idx) = stack.last() {
+                    // If the opener exists in our markup vector, check if it was marked for inclusion.
+                    if let MarkupElement::ComponentTag(ref _open_tag) = markup[opener_idx] {
+                        // If the opener was added (for ID OR modification), we must add this closer.
+                        add = true;
+                    }
+                }
+            }
+
+            // The tag is also added if it has been modified by a wicket filter.
+            if add || tag.is_modified() {
+                // Add text from the last tag position to the current tag position.
+                let text_range = self
+                    .xml_parser
+                    .get_range_from_position_marker(tag.tag.pos());
+                if !text_range.is_empty() {
+                    // Check if the previous element in the Vec was also RawMarkup. If so, extend it's
+                    // range. Otherwise just add the new raw.
+                    if let Some(MarkupElement::RawMarkup(last_raw)) = markup.last_mut() {
+                        // If they are contiguous in the source Arc, just extend the range.
+                        if last_raw.text_range.end == text_range.start {
+                            last_raw.text_range.end = text_range.end;
+                        } else {
+                            markup.push(MarkupElement::RawMarkup(RawMarkup { text_range }));
+                        }
+                    } else {
+                        markup.push(MarkupElement::RawMarkup(RawMarkup { text_range }));
+                    }
+                }
+                self.xml_parser.set_position_marker_default();
+                if tag.tag.is_open() {
+                    let current_idx = markup.len();
+                    stack.push(current_idx);
+                } else if tag.tag.is_close() {
+                    if let Some(opener_idx) = stack.pop() {
+                        let current_idx = markup.len();
+                        // Adjust the open tag to point to this close tag.
+                        if let MarkupElement::ComponentTag(ref mut open_tag) = markup[opener_idx] {
+                            if open_tag.tag.name() != tag.tag.name() {
+                                let position = tag.tag.pos();
+                                let (line, column) = FullyBufferedReader::count_lines_in_str(
+                                    &tag.tag.source()[..position],
+                                );
+                                let close_name = tag.tag.name().into_owned();
+                                let open_name = open_tag.tag.name().into_owned();
+
+                                return Err(WicketException::UnmatchedTagName {
+                                    close_name,
+                                    open_name,
+                                    line,
+                                    column,
+                                    position,
+                                });
+                            }
+                            open_tag.tag.set_open_tag(Some(current_idx));
+                        }
+                        // Set the close tag's relation.
+                        tag.tag.set_open_tag(Some(opener_idx));
+                    } else {
+                        let position = tag.tag.pos();
+                        let (line, column) =
+                            FullyBufferedReader::count_lines_in_str(&tag.tag.source()[..position]);
+                        return Err(WicketException::NoOpenTag {
+                            line,
+                            column,
+                            position,
+                        });
+                    }
+                }
+                markup.push(MarkupElement::ComponentTag(tag));
+            }
+        }
+        // The stack should be empty.
+        if !stack.is_empty() {
+            if let Some(MarkupElement::ComponentTag(ct)) = markup
+                .iter()
+                .find(|x| matches!(x, MarkupElement::ComponentTag(_)))
+            {
+                let source = ct.tag.source();
+                let position = source.len();
+
+                let (line, column) = FullyBufferedReader::count_lines_in_str(&source[..position]);
+
+                return Err(WicketException::NoOpenTag {
+                    line,
+                    column,
+                    position,
+                });
+            } else {
+                unreachable!(
+                    "The stack can not contain an element without having a Markup ComponentTag."
+                )
+            };
+        }
+
+        Ok(markup)
+    }
+
+    fn get_next_tag(&mut self) -> Result<Option<MarkupElement>, WicketException> {
+        // Check internal buffer first (items created by previous filter expansions)
+        if let Some(elem) = self.queue.pop_front() {
+            return Ok(Some(elem));
+        }
+
+        // Pull from the XML parser and run the filter pipeline.
+        'outer_loop: loop {
+            let mut tag_type: HttpTagType;
+            let mut markup_element: Option<MarkupElement>;
+
+            // RootMarkupFilter logic (obtain the xml tag).
+            loop {
+                tag_type = self.xml_parser.next_iteration()?;
+
+                markup_element = match tag_type {
+                    HttpTagType::NotInitialized => return Ok(None),
+                    HttpTagType::Body => continue,
+                    HttpTagType::Tag => Some(MarkupElement::ComponentTag(
+                        ComponentTag::from_xml_tag(self.xml_parser.get_element().unwrap()),
+                    )),
+                    // SpecialTag processed by HtmlHeaderSectionHandler,
+                    // WicketTagIdentifier,OpenCloseTagExpander.
+                    _ => Some(MarkupElement::SpecialTag(SpecialTag {
+                        tag: self.xml_parser.get_element().unwrap(),
+                    })),
+                };
+                if markup_element.is_some() {
+                    break;
+                }
+            }
+            let mut current_item = markup_element.unwrap();
+
+            // Iterate through the filter chain.
+            for filter in &mut self.filters {
+                match filter.process(current_item)? {
+                    FilterResult::Keep(modified) => {
+                        current_item = *modified; // Continue to next filter
+                    }
+                    FilterResult::Drop => {
+                        // Stop pipeline, loop back to start to get new XML tag
+                        continue 'outer_loop;
+                    }
+                    FilterResult::Replace(mut list) => {
+                        // Complex case: The filter expanded 1 tag into 3.
+                        // We take the first one to continue the pipeline,
+                        // and queue the rest. These created tags contain modified fields with no
+                        // relationship with the source Arc.
+                        if !list.is_empty() {
+                            current_item = list.remove(0);
+                            self.queue.extend(list); // Buffer the rest
+                        } else {
+                            continue 'outer_loop; // Filter returned empty list (Drop)
+                        }
+                    }
+                }
+            }
+            return Ok(Some(current_item));
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    pub fn wicket_tag() {
+        assert!(MarkupParser::new("<span wicket:id=\"test\"/>".to_owned())
+            .parse_markup()
+            .is_ok());
+
+        assert!(
+            MarkupParser::new("<span wicket:id=\"test\">Body</span>".to_owned())
+                .parse_markup()
+                .is_ok()
+        );
+        assert!(
+            MarkupParser::new("This is a test <span wicket:id=\"test\"/>".to_owned())
+                .parse_markup()
+                .is_ok()
+        );
+        assert!(MarkupParser::new(
+            "This is a test <span wicket:id=\"test\">Body</span>".to_owned()
+        )
+        .parse_markup()
+        .is_ok());
+        assert!(MarkupParser::new(
+            "<a wicket:id=\"[autolink]\" href=\"test.html\">Home</a>".to_owned()
+        )
+        .parse_markup()
+        .is_ok());
+        assert!(MarkupParser::new("<wicket:body/>".to_owned())
+            .parse_markup()
+            .is_ok());
+        assert!(MarkupParser::new("<wicket:border/>".to_owned())
+            .parse_markup()
+            .is_ok());
+        assert!(MarkupParser::new("<wicket:panel/>".to_owned())
+            .parse_markup()
+            .is_ok());
+        //TODO: Complete <wicket:remove> tag logic tests.
+    }
+
+    //TODO: Add default_wicket_tag() test.
+
+    #[test]
+    pub fn script() {
+        // let  markup = MarkupParser::parse_markup("<html wicket:id=\"test\"><script language=\"JavaScript\">... <x a> ...</script></html>".to_owned());
+        let input = "<html wicket:id=\"test\"><script language=\"JavaScript\">... <x a> ...</script></html>";
+        let markup = MarkupParser::new(input.to_owned()).parse_markup();
+        assert!(markup.as_ref().is_ok_and(|m| m.len() == 5));
+        let markup_vec = markup.unwrap();
+        assert!(
+            matches!(&markup_vec[0], MarkupElement::ComponentTag(ct) if ct.tag.name() == "html")
+        );
+        assert!(
+            matches!(&markup_vec[4], MarkupElement::ComponentTag(ct) if ct.tag.name() == "html")
+        );
+        assert!(
+            matches!(&markup_vec[1], MarkupElement::ComponentTag(ct) if ct.tag.name() == "script")
+        );
+        assert!(
+            matches!(&markup_vec[3], MarkupElement::ComponentTag(ct) if ct.tag.name() == "script")
+        );
+        // match &markup_vec[2] { MarkupElement::RawMarkup(rmu) => print!("rmu {}", &input[rmu.text_range.clone()]), _ => print!("??"), }
+        assert!(
+            matches!(&markup_vec[2], MarkupElement::RawMarkup(rmu) if &input[rmu.text_range.clone()] == "... <x a> ..." )
+        );
+    }
+    //TODO: Complete apache wicket MarkupParserTest function implmentation. Use trait MarkupResourceStreamProvider
+    // for html file parsing tests.
+}

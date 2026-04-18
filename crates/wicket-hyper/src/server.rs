@@ -2,8 +2,8 @@ use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use std::sync::Arc;
 use wicket_core::{
+    protocol::http::WebApplication,
     request::{Body, Request, Response},
-    wicket::core::protocol::http::WebApplication,
 };
 
 pub async fn handle_hyper_connection(

@@ -1,7 +1,15 @@
 use std::fmt::Display;
 
 use crate::request::Response;
-use crate::wicket::core::Component;
+
+pub trait Component {
+    fn markup_id(&self) -> &str;
+    fn set_internal_id(&self, id: InternalId);
+}
+pub struct MarkupContainer {}
+
+#[derive(Default)]
+pub struct MarkupIdGenerator {}
 
 pub trait Page {
     fn render_component(&self, _id: InternalId, _response: &Response) {

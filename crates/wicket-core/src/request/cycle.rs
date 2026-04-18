@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::{
     ajax::AjaxContext,
     components::Page,
+    protocol::http::WebApplication,
     request::{Request, RequestHandler, RequestMapperLogic, Response},
-    wicket::core::protocol::http::WebApplication,
 };
 
 pub struct RequestCycle {
