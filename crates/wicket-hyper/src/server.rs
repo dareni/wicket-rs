@@ -9,7 +9,7 @@ use wicket_core::{
 pub async fn handle_hyper_connection(
     app: Arc<WebApplication>,
     hyper_req: hyper::Request<hyper::body::Incoming>,
-) -> hyper::Response<Full<Bytes>> {
+) -> Result<hyper::Response<Full<Bytes>>, std::io::Error> {
     // 1. Conversion (Consuming Hyper Request)
     let (parts, incoming_body) = hyper_req.into_parts();
 
@@ -26,7 +26,7 @@ pub async fn handle_hyper_connection(
     let response = app.process_request(request).await;
 
     // 3. Convert WicketResponse back to Hyper
-    to_hyper_response(response)
+    Ok(to_hyper_response(response?))
 }
 
 pub fn to_hyper_response(_res: Response) -> hyper::Response<Full<Bytes>> {

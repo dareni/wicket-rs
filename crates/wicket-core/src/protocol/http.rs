@@ -1,3 +1,4 @@
+use std::io::Error;
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -40,16 +41,16 @@ impl WebApplication {
 
     /// Port of WicketFilter.processRequest()
     /// This is the entry point from the hyper bridge.
-    pub async fn process_request(self: &Arc<Self>, request: Request) -> Response {
+    pub async fn process_request(self: &Arc<Self>, request: Request) -> Result<Response, Error> {
         // 1. Setup the RequestCycle
         let mut cycle = self.create_request_cycle(request);
 
         // 2. Execute the lifecycle (The "Heavy Lifting")
         // This mirrors RequestCycle.process() in Java
-        cycle.process_request().await;
+        cycle.process_request().await?;
 
         // 3. Finalize and return
-        cycle.to_response()
+        Ok(cycle.to_response())
     }
 
     pub fn create_request_cycle(self: &Arc<Self>, request: Request) -> RequestCycle {

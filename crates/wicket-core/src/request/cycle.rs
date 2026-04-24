@@ -1,8 +1,7 @@
-use std::sync::Arc;
+use std::{io::Result, sync::Arc};
 
 use crate::{
     ajax::AjaxContext,
-    components::Page,
     protocol::http::WebApplication,
     request::{Request, RequestHandler, RequestMapperLogic, Response},
 };
@@ -35,28 +34,24 @@ impl RequestCycle {
         }
     }
 
-    pub(crate) async fn process_request(&mut self) {
+    pub(crate) async fn process_request(&mut self) -> Result<()> {
         let handler = self
             .resolve_request_handler()
             .expect("Error: no handler found!");
-        handler.respond(self);
+        handler.respond(self)
     }
 
     pub(crate) fn to_response(&self) -> Response {
         todo!()
     }
 
-    pub(crate) fn get_response_page(&self) -> &Option<Box<dyn Page>> {
-        todo!()
-    }
-
     pub fn resolve_request_handler(&mut self) -> Option<Box<dyn RequestHandler>> {
         // We ask the application (via its SystemMapper) to find the handler
-        let handler = self
+        let mapper = self
             .app
             .root_request_mapper
             .read()
             .expect("Could not access RwLock<WebApplication> ?");
-        handler.map_request(&self.request)
+        mapper.map_request(&self.request)
     }
 }

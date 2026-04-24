@@ -92,6 +92,9 @@ pub struct ComponentTag {
 
     /// Filters and Handlers may add their own attributes to the tag.
     pub user_data: Option<HashMap<String, String>>,
+
+    /// The index to this component in markup stream.
+    pub id: u16,
 }
 
 impl Default for ComponentTag {
@@ -104,6 +107,7 @@ impl Default for ComponentTag {
             markup_ref: Option::None,
             behaviors: Option::None,
             user_data: Option::None,
+            id: 0,
         }
     }
 }
@@ -214,14 +218,14 @@ impl ComponentTag {
         }
     }
 
-    pub fn write_synthetic_close_tag(&self, response: &Response) {
-        response.write("</");
+    pub fn write_synthetic_close_tag(&self, response: &mut Response) -> std::io::Result<()> {
+        response.write_str("</")?;
         if let Some(ns) = self.get_xml_tag().namespace() {
-            response.write(ns.as_ref());
-            response.write(":");
+            response.write_str(ns.as_ref())?;
+            response.write_str(":")?;
         }
-        response.write(self.get_xml_tag().name().as_ref());
-        response.write(">");
+        response.write_str(self.get_xml_tag().name().as_ref())?;
+        response.write_str(">")
     }
 
     /// Very cheap copy because it should be mostly enums and ranges.

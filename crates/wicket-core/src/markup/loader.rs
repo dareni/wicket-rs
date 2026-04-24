@@ -34,10 +34,13 @@ pub trait MarkupResourceLocationUtil {
 pub trait MarkupResourceStreamProvider {
     fn get_locator(&self) -> &dyn ResourceStreamLocator;
 
-    ///Determine the style, variation, locale, extension here.
-    fn get_markup_resource_stream<T: MarkupResourceLocationUtil>(
+    /// Determine the style, variation, locale, extension here.
+    /// Apache wicket stores style,locale in session.
+    /// Variation is stored in the component tree deferring to a parents.
+    /// Extension is dependent on the resource type.
+    fn get_markup_resource_stream(
         &self,
-        container_component: &T,
+        container_component: &dyn MarkupResourceLocationUtil,
     ) -> io::Result<Box<dyn ResourceStream>> {
         let markup_path = self.get_markup_path(container_component);
         let ret = self
@@ -47,7 +50,7 @@ pub trait MarkupResourceStreamProvider {
         ret
     }
 
-    fn get_markup_path<T: MarkupResourceLocationUtil>(&self, component: &T) -> PathBuf {
+    fn get_markup_path(&self, component: &dyn MarkupResourceLocationUtil) -> PathBuf {
         let module_path = component.get_component_path();
         let mut component_path: PathBuf = module_path.split("::").skip(1).collect();
         let component_name = component.get_component_name();

@@ -14,6 +14,7 @@ use once_cell::sync::Lazy;
 use wicket_util::parse::metapattern::core::Pattern;
 use wicket_util::static_pattern;
 
+use crate::components::ComponentId;
 use crate::components::WebPage;
 use crate::markup::loader::{DefaultMarkupResourceStreamProvider, MarkupResourceStreamProvider};
 use crate::markup::markup_element::MarkupElement;
@@ -55,7 +56,7 @@ impl Markup {
             match element {
                 // The "Super-Slice" Win: High-speed block copy
                 MarkupElement::RawMarkup(raw) => {
-                    response.write(&self.source[raw.text_range.clone()]);
+                    response.write_str(&self.source[raw.text_range.clone()])?;
                 }
 
                 // The Dynamic Part:
@@ -63,19 +64,16 @@ impl Markup {
                     if tag.wicket.is_some() {
                         // It's a non-wicket tag that was modified
                         // Render it directly and continue
-                        response.write(&tag.tag.to_xml_string());
+                        response.write_str(&tag.tag.to_xml_string())?;
                     } else {
                         // It's a real Wicket Component
                         // Find the component in the page hierarchy
                         // Call component.render(tag, writer)
-                        response.write("<");
-                        response.write(&self.source[tag.tag.pos()..]);
+                        response.write_str("<")?;
+                        response.write_str(&self.source[tag.tag.pos()..])?;
                         let _clone = tag.shadow_copy();
                         //TODO: Let each component render it's dynamic content.
-                        web_page.render_component(
-                            crate::components::ComponentId::TagId(tag.id),
-                            response,
-                        );
+                        web_page.render_component(ComponentId::TagId(tag.id), response)?;
                     }
                 }
                 _ => {}

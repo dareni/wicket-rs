@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::{collections::HashMap, fmt::Display};
 
 use crate::request::Response;
@@ -5,7 +6,7 @@ use crate::request::Response;
 pub trait Component {
     fn markup_id(&self) -> &str;
     fn set_internal_id(&self, id: InternalId);
-    fn render(&self, response: &Response);
+    fn render(&self, response: &dyn Write) -> std::io::Result<()>;
 }
 pub struct MarkupContainer {}
 
@@ -19,7 +20,7 @@ pub enum ComponentId {
 
 pub trait WebPage {
     ///Render the component from ajax context
-    fn render_component(&self, id: ComponentId, response: &mut Response);
+    fn render_component(&self, id: ComponentId, response: &mut Response) -> std::io::Result<()>;
 }
 
 pub struct Page {
@@ -59,7 +60,7 @@ impl Page {
 }
 
 impl WebPage for Page {
-    fn render_component(&self, id: ComponentId, response: &mut Response) {
+    fn render_component(&self, id: ComponentId, response: &mut Response) -> std::io::Result<()> {
         let component_id: u16 = match id {
             ComponentId::Internal(internal) => internal.into(),
             ComponentId::TagId(id) => {
@@ -79,7 +80,7 @@ impl WebPage for Page {
                     component_id
                 )
             });
-        component.render(response);
+        component.render(response)
     }
 }
 /// A type-safe wrapper for component IDs within a single Page.

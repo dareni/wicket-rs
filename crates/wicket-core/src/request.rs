@@ -1,12 +1,16 @@
 pub mod cycle;
+pub mod handler;
 pub mod mapper;
 
-use core::str;
+use std::collections::HashMap;
+use std::io::Error;
+use std::io::Write;
 
 use bytes::Bytes;
 use http::request::Parts;
 use url::Url;
 
+use crate::components::WebPage;
 use crate::request::cycle::RequestCycle;
 use crate::request::mapper::{
     BookmarkableMapper, MountedMapper, PackageMapper, ResourceMapper, SystemMapper,
@@ -29,19 +33,52 @@ impl Request {
 }
 
 #[derive(Default)]
-pub struct Response {}
+pub struct Response {
+    body: Vec<u8>,
+    content_type: Option<String>,
+    headers: Option<HashMap<String, String>>,
+    /// Status code (e.g., 200)
+    status: u16,
+}
 
 impl Response {
+    pub(crate) fn set_content_type(&mut self, content_type: &str) {
+        self.content_type = Some(content_type.to_string());
+    }
+
     pub fn new() -> Self {
-        Response::default()
+        Self {
+            body: Vec::with_capacity(32 * 1024),
+            content_type: None,
+            headers: None,
+            status: 200,
+        }
     }
 
-    pub fn write(&self, _sequence: &str) {
-        todo!()
+    pub fn set_header(&mut self, name: &str, value: &str) {
+        let header_map = self.headers.get_or_insert(HashMap::with_capacity(2));
+        header_map.insert(name.to_string(), value.to_string());
     }
 
-    pub(crate) fn set_content_type(&self, _type: &str) {
-        todo!()
+    pub fn write_str(&mut self, buf: &str) -> std::result::Result<(), Error> {
+        self.write_all(buf.as_bytes())
+    }
+
+    /// Provide the components of the wicket response for upstream consumption.
+    /// TODO: Recycle the response - pooling.
+    pub fn finalize(mut self) -> (u16, Option<HashMap<String, String>>, Vec<u8>) {
+        self.set_header("Content-Length", &self.body.len().to_string());
+        (self.status, self.headers, self.body)
+    }
+}
+
+impl Write for Response {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.body.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }
 
@@ -75,16 +112,12 @@ pub trait RequestMapperLogic: Send + Sync {
 }
 
 pub trait RequestHandler {
-    fn respond(&self, cycle: &mut RequestCycle);
-}
-
-pub trait RequestLogic {
-    // The "Do the work" method
-    fn respond(&self, cycle: &mut RequestCycle);
+    fn respond(&self, cycle: &mut RequestCycle) -> std::io::Result<()>;
+    fn get_response_page(&self) -> &Option<Box<dyn WebPage>>;
 }
 
 pub struct CompoundRequestMapper {
-    // We use a Vec of Trait Objects
+    // The container of mappers owned by the Application
     mappers: Vec<RequestMapper>,
 }
 
