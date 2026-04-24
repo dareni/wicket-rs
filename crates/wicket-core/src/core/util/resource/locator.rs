@@ -102,6 +102,8 @@ impl ResourceStreamLocator for FileResourceStreamLocator {
 
 #[cfg(test)]
 mod test {
+    use wicket_util::constants::file_ext;
+
     use crate::core::util::resource::locator::FileResourceStreamLocator;
     use std::path::Path;
 
@@ -110,13 +112,13 @@ mod test {
         let path = FileResourceStreamLocator::get_pathbuf(
             Path::new("prog"),
             &Some("1".to_owned()),
-            &Some("html".to_owned()),
+            &Some(file_ext::HTML.to_owned()),
         );
         assert_eq!("prog_1.html", path.to_str().unwrap());
         let path = FileResourceStreamLocator::get_pathbuf(
             Path::new("prog"),
             &None,
-            &Some("html".to_owned()),
+            &Some(file_ext::HTML.to_owned()),
         );
         assert_eq!("prog.html", path.to_str().unwrap());
 

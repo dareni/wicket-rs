@@ -1,5 +1,7 @@
 use std::{env, io, path::PathBuf, sync::OnceLock};
 
+use wicket_util::constants::file_ext;
+
 use crate::{
     core::util::resource::locator::{FileResourceStreamLocator, ResourceStreamLocator},
     markup::ResourceStream,
@@ -45,7 +47,7 @@ pub trait MarkupResourceStreamProvider {
         let markup_path = self.get_markup_path(container_component);
         let ret = self
             .get_locator()
-            .locate(&markup_path, &None, &Some("html".to_owned()));
+            .locate(&markup_path, &None, &Some(file_ext::HTML.to_string()));
 
         ret
     }
@@ -87,6 +89,7 @@ impl MarkupResourceStreamProvider for DefaultMarkupResourceStreamProvider {
 #[cfg(test)]
 mod test {
     use std::{io::Read, path::Path};
+    use wicket_util::constants::file_ext;
 
     use super::MarkupResourceLocationUtil;
     use crate::markup::loader::{

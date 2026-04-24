@@ -24,7 +24,7 @@ pub fn derive_markup_resource_path(input: TokenStream) -> TokenStream {
             }
 
             fn get_markup_type(&self) -> &'static str {
-                "html"
+               file_ext::HTML
             }
 
         }
