@@ -1,18 +1,23 @@
-use once_cell::sync::Lazy;
-use std::borrow::Cow;
-use std::fs::File;
-use std::io::Read;
-use std::io::{self, Write};
-use std::sync::Arc;
-use wicket_util::parse::metapattern::core::Pattern;
-
-use crate::markup::markup_element::MarkupElement;
-use wicket_util::static_pattern;
-
 pub mod loader;
 pub mod markup_element;
 pub mod markup_parser;
 pub mod parser;
+
+use std::borrow::Cow;
+use std::fs::File;
+use std::io;
+use std::io::Read;
+use std::sync::Arc;
+
+use once_cell::sync::Lazy;
+
+use wicket_util::parse::metapattern::core::Pattern;
+use wicket_util::static_pattern;
+
+use crate::components::WebPage;
+use crate::markup::loader::{DefaultMarkupResourceStreamProvider, MarkupResourceStreamProvider};
+use crate::markup::markup_element::MarkupElement;
+use crate::request::Response;
 
 static_pattern!(
     CONDITIONAL_COMMENT_OPENING,
@@ -45,12 +50,12 @@ impl Markup {
 
     /// Render from here.
     /// Move away from distributed render MarkupStream, MarkupContainer, MarkupResponse
-    pub fn render<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+    pub fn render<T: WebPage>(&self, response: &mut Response, web_page: &T) -> io::Result<()> {
         for element in &self.elements {
             match element {
                 // The "Super-Slice" Win: High-speed block copy
                 MarkupElement::RawMarkup(raw) => {
-                    writer.write_all(self.source[raw.text_range.clone()].as_bytes())?;
+                    response.write(&self.source[raw.text_range.clone()]);
                 }
 
                 // The Dynamic Part:
@@ -58,16 +63,19 @@ impl Markup {
                     if tag.wicket.is_some() {
                         // It's a non-wicket tag that was modified
                         // Render it directly and continue
-                        writer.write_all(tag.tag.to_xml_string().as_bytes())?;
+                        response.write(&tag.tag.to_xml_string());
                     } else {
                         // It's a real Wicket Component
                         // Find the component in the page hierarchy
                         // Call component.render(tag, writer)
-                        writer.write_all([b'<'].as_ref())?;
-                        writer.write_all(self.source[tag.tag.pos()..].as_bytes())?;
+                        response.write("<");
+                        response.write(&self.source[tag.tag.pos()..]);
                         let _clone = tag.shadow_copy();
                         //TODO: Let each component render it's dynamic content.
-                        //component_registry.render_component(wicket_id, clone, writer)?;
+                        web_page.render_component(
+                            crate::components::ComponentId::TagId(tag.id),
+                            response,
+                        );
                     }
                 }
                 _ => {}
@@ -115,6 +123,12 @@ impl<'a> MarkupStream<'a> {
 
 #[derive(Default)]
 pub struct MarkupFactory {}
+
+impl MarkupFactory {
+    pub fn get_markup_resource_provider() -> Box<dyn MarkupResourceStreamProvider> {
+        Box::from(DefaultMarkupResourceStreamProvider::new_default())
+    }
+}
 
 pub trait ResourceStream {
     fn get_variation(&self) -> Option<&str> {
