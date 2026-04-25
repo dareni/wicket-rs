@@ -32,3 +32,25 @@ pub fn derive_markup_resource_path(input: TokenStream) -> TokenStream {
 
     TokenStream::from(expanded)
 }
+
+#[proc_macro_attribute]
+pub fn page_factory_config(_attribs: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as DeriveInput);
+    let name = &input.ident;
+    let expanded = quote! {
+
+    #input
+
+    inventory::submit! {
+        PageEntry {
+            name: stringify!(#name),
+            constructor: |params| {
+                Box::new(#name::create_from_params(params))
+            }
+        }
+    }
+
+    };
+
+    TokenStream::from(expanded)
+}
