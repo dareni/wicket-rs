@@ -1,5 +1,10 @@
 use crate::request::{RequestMapper, RequestMapperLogic};
 
+/// Replace java SystemMapper.
+pub fn get_default_mappers() -> Vec<RequestMapper> {
+    vec![RequestMapper::Mounted(MountedMapper::default())]
+}
+
 #[derive(Default)]
 pub struct MountedMapper {}
 impl RequestMapperLogic for MountedMapper {
@@ -39,13 +44,5 @@ impl RequestMapperLogic for BookmarkableMapper {
 
     fn map_handler(&self, _handler: &dyn super::RequestHandler) -> Option<url::Url> {
         todo!()
-    }
-}
-#[derive(Default)]
-pub struct SystemMapper {}
-
-impl SystemMapper {
-    pub fn new() -> Self {
-        Self::default()
     }
 }

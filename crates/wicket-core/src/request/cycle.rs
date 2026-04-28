@@ -1,5 +1,7 @@
 use std::{io::Result, sync::Arc};
 
+use url::Url;
+
 use crate::{
     ajax::AjaxContext,
     protocol::http::WebApplication,
@@ -35,23 +37,50 @@ impl RequestCycle {
     }
 
     pub(crate) async fn process_request(&mut self) -> Result<()> {
-        let handler = self
-            .resolve_request_handler()
+        let result = self
+            .resolve_request_handler(&self.request)
             .expect("Error: no handler found!");
-        handler.respond(self)
+        result.handler.respond(self)
     }
 
     pub(crate) fn to_response(&self) -> Response {
         todo!()
     }
 
-    pub fn resolve_request_handler(&mut self) -> Option<RequestMappingResult> {
-        // We ask the application (via its SystemMapper) to find the handler
-        let mapper = self
-            .app
-            .root_request_mapper
+    /// For each mapper, construct a handler to derive a compatibility_score.
+    /// Return the result with the maximum score.
+    fn resolve_request_handler(&self, request: &Request) -> Option<RequestMappingResult> {
+        self.app
+            .app_request_mappers
             .read()
-            .expect("Could not access RwLock<WebApplication> ?");
-        mapper.map_request(&self.request)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Error accessing app_request_mappers for handler resolution! {}",
+                    e
+                )
+            })
+            .iter()
+            // Generate a RequestMappingResult for each mapper.
+            .filter_map(|mapper| mapper.map_request(request))
+            // Only consider mapper able to handle the request.
+            .filter(|rmr| rmr.compatibility_score > 0)
+            // In case of ties, the mapper added most recently wins.
+            .max_by_key(|rmr| rmr.compatibility_score)
+    }
+
+    // Reverse mapping: finding a URL for a Page or Resource
+    // Usually, the first mapper that provides a non-none URL wins
+    pub fn map_url_for(&self, handler: &dyn RequestHandler) -> Option<Url> {
+        self.app
+            .app_request_mappers
+            .read()
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Error accessing app_request_mappers for reverse mapping! {}",
+                    e
+                )
+            })
+            .iter()
+            .find_map(|mapper| mapper.map_handler(handler))
     }
 }

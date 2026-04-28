@@ -3,40 +3,29 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use crate::request::cycle::RequestCycle;
-use crate::request::RequestHandler;
-use crate::request::RequestMapperLogic;
-use crate::request::{CompoundRequestMapper, Request, RequestMapper, Response};
-
-use crate::request::mapper::SystemMapper;
+use crate::request::mapper::get_default_mappers;
+use crate::request::{Request, RequestMapper, Response};
 
 pub struct WebApplication {
-    pub root_request_mapper: RwLock<CompoundRequestMapper>,
+    pub app_request_mappers: RwLock<Vec<RequestMapper>>,
 }
 
-impl WebApplication {
-    pub fn new(user_mappers: Vec<RequestMapper>) -> Self {
-        let mut mappers = user_mappers;
-
-        // Add default Wicket mappers (System, Resource, etc.)
-        mappers.push(RequestMapper::System(SystemMapper {}));
-
+impl Default for WebApplication {
+    fn default() -> Self {
         Self {
-            root_request_mapper: RwLock::from(CompoundRequestMapper::new(mappers)),
+            app_request_mappers: RwLock::from(get_default_mappers()),
         }
     }
-
-    pub fn resolve_handler(&self, request: &Request) -> Option<Box<dyn RequestHandler>> {
-        let mapper = self.root_request_mapper.read().unwrap();
-        mapper.map_request(request)
-    }
-
-    pub fn mount(&mut self, mapper: RequestMapper) {
+}
+impl WebApplication {
+    /// Add a request mapper.
+    pub fn mount(&mut self, pos: usize, mapper: RequestMapper) {
         let mut map = self
-            .root_request_mapper
+            .app_request_mappers
             .write()
             .expect("Error locking root_request_mapper?");
-
-        map.add(mapper);
+        let idx = if pos > map.len() { map.len() } else { pos };
+        map.insert(idx, mapper);
     }
 
     /// Port of WicketFilter.processRequest()
