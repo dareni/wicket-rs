@@ -3,7 +3,7 @@ use std::{io::Result, sync::Arc};
 use crate::{
     ajax::AjaxContext,
     protocol::http::WebApplication,
-    request::{Request, RequestHandler, RequestMapperLogic, Response},
+    request::{Request, RequestHandler, RequestMapperLogic, RequestMappingResult, Response},
 };
 
 pub struct RequestCycle {
@@ -45,7 +45,7 @@ impl RequestCycle {
         todo!()
     }
 
-    pub fn resolve_request_handler(&mut self) -> Option<Box<dyn RequestHandler>> {
+    pub fn resolve_request_handler(&mut self) -> Option<RequestMappingResult> {
         // We ask the application (via its SystemMapper) to find the handler
         let mapper = self
             .app

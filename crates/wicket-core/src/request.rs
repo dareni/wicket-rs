@@ -91,9 +91,31 @@ pub enum RequestMapper {
     Custom(Box<dyn RequestMapperLogic>),
 }
 
+pub struct RequestMappingResult {
+    pub handler: Box<dyn RequestHandler>,
+    pub compatibility_score: i32, // Helps the App decide between two similar routes
+}
+
+/// The compatibility_score is contained in the return from map_request.
+pub trait RequestMapperLogic: Send + Sync {
+    fn map_request(&self, request: &Request) -> Option<RequestMappingResult>;
+
+    /// Map the handler to a url eg for a link component. The link component creates a
+    /// RenderPageRequestHandler containing the target class and request parameters via the
+    /// PageProvider. Rendering triggers a map_url_for(handler) on the RequestCycle. RequestCycle
+    /// hits each mapper until a url is generaged.  The url is added to the href of the link.
+    fn map_handler(&self, handler: &dyn RequestHandler) -> Option<Url>;
+}
+
 impl RequestMapperLogic for RequestMapper {
-    fn map_request(&self, _request: &Request) -> Option<Box<dyn RequestHandler>> {
-        todo!()
+    fn map_request(&self, request: &Request) -> Option<RequestMappingResult> {
+        match self {
+            RequestMapper::Mounted(rm) => rm.map_request(request),
+            RequestMapper::Package(rm) => rm.map_request(request),
+            RequestMapper::Resource(rm) => rm.map_request(request),
+            RequestMapper::Bookmarkable(rm) => rm.map_request(request),
+            RequestMapper::Custom(rm) => rm.map_request(request),
+        }
     }
 
     fn map_handler(&self, _handler: &dyn RequestHandler) -> Option<Url> {
@@ -117,7 +139,8 @@ pub trait RequestHandler {
 }
 
 pub struct CompoundRequestMapper {
-    // The container of mappers owned by the Application
+    // The container of mappers owned by the Application, from the default SystemMappers
+    // and added custom user mappers.
     mappers: Vec<RequestMapper>,
 }
 
@@ -152,13 +175,21 @@ impl RequestMapperLogic for CompoundRequestMapper {
 
     fn get_compatibility_score(&self, request: &Request) -> i32 {
         // A CompoundMapper's score is usually the highest score among its children
+    /// For each mapper construct a handler to derive a compatibility_score.
+    /// return the result with the maximum score.
+    fn map_request(&self, request: &Request) -> Option<RequestMappingResult> {
         self.mappers
             .iter()
-            .map(|m| m.get_compatibility_score(request))
-            .max()
-            .unwrap_or(0)
+            // Generate a RequestMappingResult for each mapper.
+            .filter_map(|mapper| mapper.map_request(request))
+            // Only consider mapper able to handle the request.
+            .filter(|rmr| rmr.compatibility_score > 0)
+            // In case of ties, the mapper added most recently wins.
+            .max_by_key(|rmr| rmr.compatibility_score)
     }
 
+    // Reverse mapping: finding a URL for a Page or Resource
+    // Usually, the first mapper that provides a non-none URL wins
     fn map_handler(&self, handler: &dyn RequestHandler) -> Option<Url> {
         // Reverse mapping: finding a URL for a Page or Resource
         // Usually, the first mapper that provides a non-none URL wins
