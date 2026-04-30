@@ -15,5 +15,6 @@ thiserror.workspace = true
 url = "2.5.8"
 
 wicket-macro = { path = "../wicket-macro/"}
+wicket-macro-support = { path = "../wicket-macro-support/"}
 wicket-request = { path = "../wicket-request/"}
 wicket-util = { path = "../wicket-util/"}

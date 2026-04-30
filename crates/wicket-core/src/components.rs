@@ -18,21 +18,37 @@ pub enum ComponentId {
     TagId(u16),
 }
 
-pub trait WebPage {
+pub struct PageType {
+    pub id: u32,
+    pub name: &'static str,
+}
+
+pub trait PageIdentifier {
+    fn get_page_identity(&self) -> &PageType;
+}
+
+pub trait WebPage: PageIdentifier {
     ///Render the component from ajax context
     fn render_component(&self, id: ComponentId, response: &mut Response) -> std::io::Result<()>;
 }
 
 pub struct Page {
-    //Internal component id, should this be the index into components?.
+    // Internal component id, should this be the index into components?.
     id_counter: u16,
-    //Unique Id for this page instance.
+    // Unique Id for this page instance.
     _instance_id: u8,
-    //central page component store
+    // Central page component store, contains all page components with the
+    // exception of the children of list views.
     components: Vec<Box<dyn Component>>,
     tag_id_map: HashMap<u16, InternalId>,
-    //direct children
+    // Direct children.
     children: Vec<u16>,
+}
+
+impl PageIdentifier for Page {
+    fn get_page_identity(&self) -> &PageType {
+        panic!("Error: Missing proc_macro_derive. Add wicket_page attribute to the page.")
+    }
 }
 
 impl Page {

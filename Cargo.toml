@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/wicket-core","crates/wicket-hyper", "crates/wicket-macro", "crates/wicket-request", "crates/wicket-util", ]
+members = ["crates/wicket-core","crates/wicket-hyper", "crates/wicket-macro",  "crates/wicket-macro-support", "crates/wicket-request", "crates/wicket-util", ]
 
 [workspace.dependencies]
 thiserror = { version = "2.0.17"}
@@ -8,5 +8,6 @@ thiserror = { version = "2.0.17"}
 wicket-core= { version = "0.1.0", path = "crates/wicket-core", default-features = false }
 wicket-hyper= { version = "0.1.0", path = "crates/wicket-hyper", default-features = false }
 wicket-macro= { version = "0.1.0", path = "crates/wicket-macro", default-features = false }
+wicket-macro-support= { version = "0.1.0", path = "crates/wicket-macro-support", default-features = false }
 wicket-request= { version = "0.1.0", path = "crates/wicket-request", default-features = false }
 wicket-util= { version = "0.1.0", path = "crates/wicket-util", default-features = false }

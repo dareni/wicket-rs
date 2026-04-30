@@ -1,6 +1,8 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, parse_macro_input};
+use syn::{DeriveInput, Ident, parse_macro_input};
+
+use wicket_macro_support::hash_string;
 
 /// The most reliable technique for obtaining module path and struct name.
 #[proc_macro_derive(MarkupResourcePath)]
@@ -12,8 +14,11 @@ pub fn derive_markup_resource_path(input: TokenStream) -> TokenStream {
     // Build the output tokens using the quote! macro
     // will expand to the module where the struct is defined,
     // not where the macro lives.
+    TokenStream::from(get_impl_markup_resource_location_util(&name))
+}
 
-    let expanded = quote! {
+fn get_impl_markup_resource_location_util(name: &Ident) -> proc_macro2::TokenStream {
+    let expanded: proc_macro2::TokenStream = quote! {
         impl MarkupResourceLocationUtil for #name {
             fn get_component_path(&self) -> &'static str {
                 module_path!()
@@ -30,20 +35,42 @@ pub fn derive_markup_resource_path(input: TokenStream) -> TokenStream {
         }
     };
 
-    TokenStream::from(expanded)
+    expanded
 }
 
+const PAGE_ID_CONST_PREFIX: &str = "WICKETPAGEID_";
+
 #[proc_macro_attribute]
-pub fn page_factory_config(_attribs: TokenStream, item: TokenStream) -> TokenStream {
+pub fn wicket_page(_attribs: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
     let name = &input.ident;
+    let const_name = quote::format_ident!(
+        "{}{}",
+        PAGE_ID_CONST_PREFIX,
+        name.to_string().to_uppercase()
+    );
+    let location_impl = get_impl_markup_resource_location_util(name);
+    let id = hash_string(name.to_string().as_str());
     let expanded = quote! {
 
     #input
 
+    #location_impl
+
+    pub static #const_name : PageType = PageType {
+        id: #id,
+        name: stringify!(#name),
+    };
+
+     impl PageIdentifier for #name {
+         fn get_page_identity(&self) -> &'static PageType {
+             &#const_name
+         }
+     }
+
     inventory::submit! {
         PageEntry {
-            name: stringify!(#name),
+            id: &#const_name,
             constructor: |params| {
                 Box::new(#name::create_from_params(params))
             }
