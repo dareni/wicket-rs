@@ -14,29 +14,50 @@ use crate::components::WebPage;
 use crate::request::cycle::RequestCycle;
 use crate::request::mapper::{BookmarkableMapper, MountedMapper, PackageMapper, ResourceMapper};
 
-pub enum Body {
+pub enum RequestBody {
     None,
     Bytes(Bytes),
 }
 
 pub struct Request {
     pub parts: Parts,
-    pub body: Body,
+    pub body: RequestBody,
 }
 
 impl Request {
-    pub fn new(parts: Parts, body: Body) -> Self {
+    pub fn new(parts: Parts, body: RequestBody) -> Self {
         Self { parts, body }
     }
 }
 
 #[derive(Default)]
+/// The handler sets the body type.
+pub enum ResponseBody {
+    /// Small, buffered responses (HTML, JSON)
+    Buffered(Vec<u8>), //Vec::with_capacity(32 * 1024)
+    /// Large, streaming responses (Files, dynamic video)
+    Streaming(Box<dyn std::io::Read + Send>),
+    #[default]
+    /// For 302s or 204 No Content
+    Empty,
+}
+
+impl ResponseBody {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        match self {
+            ResponseBody::Buffered(buff) => buff.write(buf),
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Default)]
 pub struct Response {
-    body: Vec<u8>,
+    body: ResponseBody,
     content_type: Option<String>,
     headers: Option<HashMap<String, String>>,
     /// Status code (e.g., 200)
-    status: u16,
+    pub status: u16,
 }
 
 impl Response {
@@ -46,7 +67,7 @@ impl Response {
 
     pub fn new() -> Self {
         Self {
-            body: Vec::with_capacity(32 * 1024),
+            body: ResponseBody::Empty,
             content_type: None,
             headers: None,
             status: 200,
@@ -60,13 +81,6 @@ impl Response {
 
     pub fn write_str(&mut self, buf: &str) -> std::result::Result<(), Error> {
         self.write_all(buf.as_bytes())
-    }
-
-    /// Provide the components of the wicket response for upstream consumption.
-    /// TODO: Recycle the response - pooling.
-    pub fn finalize(mut self) -> (u16, Option<HashMap<String, String>>, Vec<u8>) {
-        self.set_header("Content-Length", &self.body.len().to_string());
-        (self.status, self.headers, self.body)
     }
 }
 

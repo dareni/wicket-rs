@@ -3,7 +3,7 @@ use http_body_util::{BodyExt, Full};
 use std::sync::Arc;
 use wicket_core::{
     protocol::http::WebApplication,
-    request::{Body, Request, Response},
+    request::{Request, RequestBody, Response},
 };
 
 pub async fn handle_hyper_connection(
@@ -14,10 +14,10 @@ pub async fn handle_hyper_connection(
     let (parts, incoming_body) = hyper_req.into_parts();
 
     let body_bytes = if parts.method == hyper::Method::GET {
-        Body::None
+        RequestBody::None
     } else {
         let collected = incoming_body.collect().await.unwrap();
-        Body::Bytes(collected.to_bytes())
+        RequestBody::Bytes(collected.to_bytes())
     };
 
     let request = Request::new(parts, body_bytes);
