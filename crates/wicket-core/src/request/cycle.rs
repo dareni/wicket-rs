@@ -4,9 +4,21 @@ use url::Url;
 
 use crate::{
     ajax::AjaxContext,
+    components::WebPage,
     protocol::http::WebApplication,
     request::{Request, RequestHandler, RequestMapperLogic, RequestMappingResult, Response},
 };
+
+pub enum RedirectAction {
+    /// No navigation change.
+    None,
+    /// Post, redirect, get  (302->/get)
+    RedirectSelf,
+    /// Stop current flow, navigate to a new page
+    Redirect(Box<dyn WebPage>),
+    /// Stop current flow, go to a hardcoded URL (external)
+    RedirectUrl(String),
+}
 
 pub struct RequestCycle {
     pub request: Request,
