@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 
 use crate::components::{ComponentId, InternalId, WebPage};
-use crate::request::cycle::RequestCycle;
-use crate::request::RequestHandler;
+use crate::request::cycle::{HandlerResult, RedirectAction, RequestCycle};
+use crate::request::handler::RedirectHandler;
+use crate::request::{RequestHandler, Response};
 
 #[derive(Default)]
 pub struct AjaxContext {
@@ -30,36 +31,41 @@ impl<'a> AjaxRequestTarget<'a> {
     }
 }
 
+pub fn test(response: &mut Response) -> std::io::Result<HandlerResult> {
+    response
+        .write_str("<ajax-response>")
+        .map(|_| HandlerResult::Complete)
+}
+
 impl<'a> RequestHandler for AjaxRequestTarget<'a> {
-    fn respond(&self, cycle: &mut RequestCycle) -> std::io::Result<()> {
+    fn respond(&self, cycle: &mut RequestCycle) -> std::io::Result<HandlerResult> {
         let some_page = self.get_response_page();
 
-        let RequestCycle {
-            response,
-            redirect_url,
-            ajax_context,
-            ..
-        } = cycle;
+        let RequestCycle { response, .. } = cycle;
         response.set_content_type("text/xml");
         response.write_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")?;
         response.write_str("<ajax-response>")?;
-        if let Some(url) = redirect_url {
-            response.write_str(&format!("<redirect><![CDATA[{}]]></redirect>", url))?
-        } else if let Some(page) = some_page {
-            // Render the specific components registered in the target
-            if let Some(ajax_context) = ajax_context {
-                for id in &ajax_context.dirty_components {
-                    response.write_str(&format!("<component id=\"{}\"><![CDATA[", id))?;
-                    // Call back into the page/component to render its markup
-                    page.render_component(ComponentId::Internal(*id), response)?;
-                    response.write_str("]]></component>")?;
+        if let Some(page) = some_page {
+            for id in &self.context.dirty_components {
+                response.write_str(&format!("<component id=\"{}\"><![CDATA[", id))?;
+                let action = page.render_component(ComponentId::Internal(*id), response)?;
+                if !matches!(action, RedirectAction::None) {
+                    return Ok(HandlerResult::Schedule(Box::from(RedirectHandler::from(
+                        action,
+                    ))));
                 }
+                response.write_str("]]></component>")?;
             }
         }
-        response.write_str("</ajax-response>")
+        response.write_str("</ajax-response>")?;
+        Ok(HandlerResult::Complete)
     }
 
     fn get_response_page(&self) -> &Option<Box<dyn WebPage>> {
         todo!()
+    }
+
+    fn as_page_provider(&self) -> &Option<crate::request::handler::PageProvider> {
+        &None
     }
 }

@@ -5,7 +5,10 @@ use std::{
 
 use wicket_request::request::mapper::parameter::PageParameters;
 
-use crate::components::{PageType, WebPage};
+use crate::{
+    components::{PageType, WebPage},
+    request::{cycle::RedirectAction, RequestHandler},
+};
 
 inventory::collect!(PageEntry);
 
@@ -51,6 +54,8 @@ struct PageEntry {
     constructor: WebPageConstructor,
 }
 
+/// Fresh creation: page_type, params.
+/// Identity: page_id, render_id.
 pub struct PageProvider {
     pub page_type: &'static PageType,
     // The data taken to construct the page.
@@ -76,6 +81,32 @@ impl PageProvider {
     }
 }
 
+pub struct RedirectHandler {
+    pub redirect_action: RedirectAction,
+}
+impl From<RedirectAction> for RedirectHandler {
+    fn from(redirect_action: RedirectAction) -> Self {
+        Self { redirect_action }
+    }
+}
+impl RedirectHandler {}
+impl RequestHandler for RedirectHandler {
+    fn respond(
+        &self,
+        _cycle: &mut super::cycle::RequestCycle,
+    ) -> std::io::Result<super::cycle::HandlerResult> {
+        todo!()
+    }
+
+    fn get_response_page(&self) -> &Option<Box<dyn WebPage>> {
+        todo!()
+    }
+
+    fn as_page_provider(&self) -> &Option<PageProvider> {
+        todo!()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use wicket_macro::wicket_page;
@@ -86,7 +117,9 @@ mod test {
     use crate::components::ComponentId;
     use crate::components::PageIdentifier;
     use crate::markup::loader::MarkupResourceLocationUtil;
+    use crate::request::cycle::RedirectAction;
     use crate::request::Response;
+    use crate::request::ResponseBody;
 
     use super::*;
 
@@ -97,8 +130,9 @@ mod test {
             &self,
             _id: ComponentId,
             response: &mut Response,
-        ) -> std::io::Result<()> {
-            response.write_str("Render TestPage components")
+        ) -> std::io::Result<RedirectAction> {
+            response.write_str("Render TestPage components")?;
+            Ok(RedirectAction::None)
         }
     }
 
@@ -126,7 +160,7 @@ mod test {
     pub fn webpage_constructor_test() {
         let web_page = construct_page(&TESTPAGE_ID, None);
         let mut response = Response {
-            body: Vec::new(),
+            body: ResponseBody::Buffered(Vec::new()),
             content_type: None,
             headers: None,
             status: 0,
@@ -134,7 +168,13 @@ mod test {
         web_page
             .render_component(ComponentId::TagId(0), &mut response)
             .ok();
-        assert_eq!(response.body, "Render TestPage components".as_bytes());
+        assert_eq!(
+            match response.body {
+                ResponseBody::Buffered(buf) => buf,
+                _unreachable => vec![],
+            },
+            "Render TestPage components".as_bytes()
+        );
     }
 
     #[wicket_page]
@@ -147,8 +187,9 @@ mod test {
             &self,
             _id: ComponentId,
             response: &mut Response,
-        ) -> std::io::Result<()> {
-            response.write_str(format!("ParameterizedPage data : {}", &self.data).as_str())
+        ) -> std::io::Result<RedirectAction> {
+            response.write_str(format!("ParameterizedPage data : {}", &self.data).as_str())?;
+            Ok(RedirectAction::None)
         }
     }
 
@@ -169,7 +210,7 @@ mod test {
         let param = PageParameters::new().add("data".to_string(), "abc123".to_string());
         let web_page = construct_page(&WICKETPAGEID_PARAMETERIZEDPAGE, Some(param));
         let mut response = Response {
-            body: Vec::new(),
+            body: ResponseBody::Buffered(Vec::new()),
             content_type: None,
             headers: None,
             status: 0,
@@ -177,6 +218,12 @@ mod test {
         web_page
             .render_component(ComponentId::TagId(0), &mut response)
             .ok();
-        assert_eq!(response.body, "ParameterizedPage data : abc123".as_bytes());
+        assert_eq!(
+            match response.body {
+                ResponseBody::Buffered(buf) => buf,
+                _unreachable => vec![],
+            },
+            "ParameterizedPage data : abc123".as_bytes()
+        );
     }
 }

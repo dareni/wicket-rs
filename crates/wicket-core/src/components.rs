@@ -1,12 +1,13 @@
 use std::io::Write;
 use std::{collections::HashMap, fmt::Display};
 
+use crate::request::cycle::RedirectAction;
 use crate::request::Response;
 
 pub trait Component {
     fn markup_id(&self) -> &str;
     fn set_internal_id(&self, id: InternalId);
-    fn render(&self, response: &dyn Write) -> std::io::Result<()>;
+    fn render(&self, response: &dyn Write) -> std::io::Result<RedirectAction>;
 }
 pub struct MarkupContainer {}
 
@@ -29,7 +30,11 @@ pub trait PageIdentifier {
 
 pub trait WebPage: PageIdentifier {
     ///Render the component from ajax context
-    fn render_component(&self, id: ComponentId, response: &mut Response) -> std::io::Result<()>;
+    fn render_component(
+        &self,
+        id: ComponentId,
+        response: &mut Response,
+    ) -> std::io::Result<RedirectAction>;
 }
 
 pub struct Page {
@@ -76,7 +81,11 @@ impl Page {
 }
 
 impl WebPage for Page {
-    fn render_component(&self, id: ComponentId, response: &mut Response) -> std::io::Result<()> {
+    fn render_component(
+        &self,
+        id: ComponentId,
+        response: &mut Response,
+    ) -> std::io::Result<RedirectAction> {
         let component_id: u16 = match id {
             ComponentId::Internal(internal) => internal.into(),
             ComponentId::TagId(id) => {

@@ -43,6 +43,6 @@ impl WebApplication {
     }
 
     pub fn create_request_cycle(self: &Arc<Self>, request: Request) -> RequestCycle {
-        RequestCycle::new(self.clone(), request, Response::new(), None)
+        RequestCycle::new(self.clone(), request, Response::new())
     }
 }

@@ -11,7 +11,9 @@ use http::request::Parts;
 use url::Url;
 
 use crate::components::WebPage;
+use crate::request::cycle::HandlerResult;
 use crate::request::cycle::RequestCycle;
+use crate::request::handler::PageProvider;
 use crate::request::mapper::{BookmarkableMapper, MountedMapper, PackageMapper, ResourceMapper};
 
 pub enum RequestBody {
@@ -114,7 +116,7 @@ pub trait RequestMapperLogic: Send + Sync {
     /// Map the handler to a url eg for a link component. The link component creates a
     /// RenderPageRequestHandler containing the target class and request parameters via the
     /// PageProvider. Rendering triggers a map_url_for(handler) on the RequestCycle. RequestCycle
-    /// hits each mapper until a url is generaged.  The url is added to the href of the link.
+    /// hits each mapper until a url is generated.  The url is added to the href of the link.
     fn map_handler(&self, handler: &dyn RequestHandler) -> Option<Url>;
 }
 
@@ -135,6 +137,7 @@ impl RequestMapperLogic for RequestMapper {
 }
 
 pub trait RequestHandler {
-    fn respond(&self, cycle: &mut RequestCycle) -> std::io::Result<()>;
+    fn respond(&self, cycle: &mut RequestCycle) -> std::io::Result<HandlerResult>;
     fn get_response_page(&self) -> &Option<Box<dyn WebPage>>;
+    fn as_page_provider(&self) -> &Option<PageProvider>;
 }

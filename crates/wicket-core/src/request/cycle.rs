@@ -3,7 +3,6 @@ use std::{io::Result, sync::Arc};
 use url::Url;
 
 use crate::{
-    ajax::AjaxContext,
     components::WebPage,
     protocol::http::WebApplication,
     request::{Request, RequestHandler, RequestMapperLogic, RequestMappingResult, Response},
@@ -20,39 +19,39 @@ pub enum RedirectAction {
     RedirectUrl(String),
 }
 
+pub enum HandlerResult {
+    Complete,
+    Schedule(Box<dyn RequestHandler>),
+}
+
 pub struct RequestCycle {
     pub request: Request,
     pub response: Response,
     pub app: Arc<WebApplication>,
-    ///Active handler
-    pub handler: Option<Box<dyn RequestHandler>>,
-    // The scheduled destination
-    pub redirect_url: Option<String>,
-    pub ajax_context: Option<AjaxContext>,
 }
 
 impl RequestCycle {
-    pub fn new(
-        app: Arc<WebApplication>,
-        request: Request,
-        response: Response,
-        handler: Option<Box<dyn RequestHandler>>,
-    ) -> Self {
+    pub fn new(app: Arc<WebApplication>, request: Request, response: Response) -> Self {
         Self {
             app,
             request,
             response,
-            handler,
-            redirect_url: None,
-            ajax_context: None,
         }
     }
 
     pub(crate) async fn process_request(&mut self) -> Result<()> {
-        let result = self
+        let mut handler = self
             .resolve_request_handler(&self.request)
-            .expect("Error: no handler found!");
-        result.handler.respond(self)
+            .expect("Error: no handler found!")
+            .handler;
+
+        loop {
+            match handler.respond(self)? {
+                HandlerResult::Complete => break,
+                HandlerResult::Schedule(next_handler) => handler = next_handler,
+            };
+        }
+        Ok(())
     }
 
     pub(crate) fn to_response(&self) -> Response {
