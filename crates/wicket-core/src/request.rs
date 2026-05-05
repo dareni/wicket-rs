@@ -63,10 +63,6 @@ pub struct Response {
 }
 
 impl Response {
-    pub(crate) fn set_content_type(&mut self, content_type: &str) {
-        self.content_type = Some(content_type.to_string());
-    }
-
     pub fn new() -> Self {
         Self {
             body: ResponseBody::Empty,
@@ -76,9 +72,21 @@ impl Response {
         }
     }
 
-    pub fn set_header(&mut self, name: &str, value: &str) {
+    pub fn set_body(&mut self, body: ResponseBody) {
+        self.body = body;
+    }
+
+    pub fn get_body(&self) -> &ResponseBody {
+        &self.body
+    }
+
+    pub fn set_content_type(&mut self, content_type: impl Into<String>) {
+        self.content_type = Some(content_type.into());
+    }
+
+    pub fn set_header(&mut self, name: impl Into<String>, value: impl Into<String>) {
         let header_map = self.headers.get_or_insert(HashMap::with_capacity(2));
-        header_map.insert(name.to_string(), value.to_string());
+        header_map.insert(name.into(), value.into());
     }
 
     pub fn write_str(&mut self, buf: &str) -> std::result::Result<(), Error> {

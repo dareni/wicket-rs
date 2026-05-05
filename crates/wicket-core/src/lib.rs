@@ -5,4 +5,5 @@ pub mod core;
 pub mod markup;
 pub mod protocol;
 pub mod request;
+pub mod session;
 pub mod settings;
