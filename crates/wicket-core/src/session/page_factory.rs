@@ -10,10 +10,10 @@ use crate::components::{PageType, WebPage};
 inventory::collect!(PageEntry);
 
 type WebPageConstructor = fn(params: Option<PageParameters>) -> Box<dyn WebPage>;
-static PAGE_FACTORY: OnceLock<HashMap<u32, &PageEntry>> = OnceLock::new();
+static PAGE_FACTORY: OnceLock<HashMap<u16, &PageEntry>> = OnceLock::new();
 
-fn create_page_factory_map() -> HashMap<u32, &'static PageEntry> {
-    let mut page_map: HashMap<u32, &PageEntry> = HashMap::new();
+fn create_page_factory_map() -> HashMap<u16, &'static PageEntry> {
+    let mut page_map: HashMap<u16, &PageEntry> = HashMap::new();
     for entry in inventory::iter::<PageEntry> {
         match page_map.entry(entry.id.id) {
             Entry::Vacant(e) => {

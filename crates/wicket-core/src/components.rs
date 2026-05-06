@@ -20,7 +20,7 @@ pub enum ComponentId {
 }
 
 pub struct PageType {
-    pub id: u32,
+    pub id: u16,
     pub name: &'static str,
 }
 
@@ -28,6 +28,7 @@ pub trait PageIdentifier {
     fn get_page_identity(&self) -> &PageType;
 }
 
+// TODO: add Send + Sync for disk storage.
 pub trait WebPage: PageIdentifier {
     ///Render the component from ajax context
     fn render_component(
