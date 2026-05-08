@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use crate::request::cycle::RequestCycle;
+use crate::request::cycle::SessionProvider;
 use crate::request::mapper::get_default_mappers;
 use crate::request::{Request, RequestMapper, Response};
 use crate::session::SessionRegistry;
@@ -39,13 +40,15 @@ impl WebApplication {
 
         // 2. Execute the lifecycle (The "Heavy Lifting")
         // This mirrors RequestCycle.process() in Java
-        cycle.process_request().await?;
+        cycle
+            .process_request(&mut SessionProvider::default())
+            .await?;
 
         // 3. Finalize and return
         Ok(cycle.to_response())
     }
 
-    pub fn create_request_cycle(self: &Arc<Self>, request: Request) -> RequestCycle {
+    pub fn create_request_cycle(self: &Arc<Self>, request: Request) -> RequestCycle<'_> {
         RequestCycle::new(self.clone(), request, Response::new())
     }
 

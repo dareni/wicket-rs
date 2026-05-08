@@ -7,14 +7,18 @@ use std::io::Error;
 use std::io::Write;
 
 use bytes::Bytes;
+use cookie::Cookie;
 use http::request::Parts;
 use url::Url;
 
 use crate::components::WebPage;
 use crate::request::cycle::HandlerResult;
 use crate::request::cycle::RequestCycle;
+use crate::request::cycle::SessionProvider;
 use crate::request::handler::PageProvider;
 use crate::request::mapper::{BookmarkableMapper, MountedMapper, PackageMapper, ResourceMapper};
+
+static SESSION_ID_COOKIE_NAME: &str = "SESSION_ID";
 
 pub enum RequestBody {
     None,
@@ -29,6 +33,28 @@ pub struct Request {
 impl Request {
     pub fn new(parts: Parts, body: RequestBody) -> Self {
         Self { parts, body }
+    }
+
+    pub fn get_session_id(&self) -> Option<u32> {
+        self.extract_cookie(SESSION_ID_COOKIE_NAME)
+            .map(|id| u32::from_str_radix(&id, 16))
+            .transpose()
+            .unwrap_or(None)
+    }
+
+    pub fn extract_cookie(&self, cookie_name: &str) -> Option<String> {
+        let headers = &self.parts.headers;
+        let cookie_header = headers.get(http::header::COOKIE)?;
+        let cookie_str = cookie_header.to_str().ok()?;
+        Cookie::split_parse(cookie_str)
+            .filter_map(|res| res.ok()) // Keep only the Ok(Cookie)
+            .find_map(|cookie| {
+                if cookie.name() == cookie_name {
+                    Some(cookie.value().to_string())
+                } else {
+                    None
+                }
+            })
     }
 }
 
@@ -145,7 +171,11 @@ impl RequestMapperLogic for RequestMapper {
 }
 
 pub trait RequestHandler {
-    fn respond(&self, cycle: &mut RequestCycle) -> std::io::Result<HandlerResult>;
+    fn respond(
+        &self,
+        cycle: &mut RequestCycle,
+        session_provider: &mut SessionProvider,
+    ) -> std::io::Result<HandlerResult>;
     fn get_response_page(&self) -> &Option<Box<dyn WebPage>>;
     fn as_page_provider(&self) -> &Option<PageProvider>;
 }

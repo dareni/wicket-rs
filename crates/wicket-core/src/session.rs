@@ -71,13 +71,22 @@ impl SessionRegistry {
         }
     }
 
-    pub async fn with<F, Fut, R>(&self, session_hex_id: &str, f: F) -> Option<R>
+    pub fn get_session_handle(&self, session_id: u32) -> Option<Arc<Mutex<SessionData>>> {
+        let handle = {
+            let dash_shard_handle = self.sessions.get(&session_id)?;
+            let session_mut = dash_shard_handle.value();
+            Arc::clone(session_mut)
+            // drop the dash_shard_handle asap.
+        };
+        Some(handle)
+    }
+
+    pub async fn with<F, Fut, R>(&self, session_id: u32, f: F) -> Option<R>
     where
         F: FnOnce(Arc<Mutex<SessionData>>) -> Fut,
         Fut: std::future::Future<Output = R>,
     {
-        let id = u32::from_str_radix(session_hex_id, 16).ok()?;
-        let session_handle = self.sessions.get(&id)?.clone();
+        let session_handle = self.sessions.get(&session_id)?.clone();
         let local_session_handle = session_handle.clone();
         let future = Some(f(session_handle).await);
         let mut session = local_session_handle.lock().await;

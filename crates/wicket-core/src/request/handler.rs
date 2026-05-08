@@ -2,7 +2,10 @@ use wicket_request::request::mapper::parameter::PageParameters;
 
 use crate::{
     components::{PageType, WebPage},
-    request::{cycle::RedirectAction, RequestHandler},
+    request::{
+        cycle::{RedirectAction, SessionProvider},
+        RequestHandler,
+    },
     session::page_factory::construct_page,
 };
 
@@ -13,9 +16,9 @@ pub struct PageProvider {
     // The data taken to construct the page.
     pub params: Option<PageParameters>,
     // The instance of a page, caters to multiple tabs.
-    pub page_id: u16,
+    pub page_id: Option<u16>,
     // State change snapshot within an instance.
-    pub render_id: u16,
+    pub render_id: Option<u16>,
 }
 
 impl PageProvider {
@@ -23,13 +26,16 @@ impl PageProvider {
         Self {
             page_type,
             params,
-            page_id: 0,
-            render_id: 0,
+            page_id: None,
+            render_id: None,
         }
     }
 
     pub fn get_instance(&mut self) -> Box<dyn WebPage> {
         construct_page(self.page_type, self.params.take())
+    }
+    pub fn needs_session_lookup(&self) -> bool {
+        self.page_id.is_some()
     }
 }
 
@@ -46,6 +52,7 @@ impl RequestHandler for RedirectHandler {
     fn respond(
         &self,
         _cycle: &mut super::cycle::RequestCycle,
+        _session_provider: &mut SessionProvider,
     ) -> std::io::Result<super::cycle::HandlerResult> {
         todo!()
     }

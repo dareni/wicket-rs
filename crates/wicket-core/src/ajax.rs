@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::components::{ComponentId, InternalId, WebPage};
-use crate::request::cycle::{HandlerResult, RedirectAction, RequestCycle};
+use crate::request::cycle::{HandlerResult, RedirectAction, RequestCycle, SessionProvider};
 use crate::request::handler::RedirectHandler;
 use crate::request::{RequestHandler, Response};
 
@@ -38,7 +38,11 @@ pub fn test(response: &mut Response) -> std::io::Result<HandlerResult> {
 }
 
 impl<'a> RequestHandler for AjaxRequestTarget<'a> {
-    fn respond(&self, cycle: &mut RequestCycle) -> std::io::Result<HandlerResult> {
+    fn respond(
+        &self,
+        cycle: &mut RequestCycle,
+        _session_provider: &mut SessionProvider,
+    ) -> std::io::Result<HandlerResult> {
         let some_page = self.get_response_page();
 
         let RequestCycle { response, .. } = cycle;
