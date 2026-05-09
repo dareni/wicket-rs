@@ -91,6 +91,7 @@ impl XmlAttribute {
 
 /// Use as much of the original xml markup as possible, any changes to the original are stored as
 /// required.
+/// TODO: Change the ranges from usize to u32.
 #[derive(Debug)]
 pub enum XmlString {
     /// Points to the original HTML source.
@@ -132,6 +133,7 @@ pub struct XmlTag {
     /// The entire xml source containing this tag.
     source: Arc<str>,
     /// The range of the entire tag: e.g., `<wicket:label id="test">`.
+    /// TODO: change the range from usize to u32.
     pub text_range: Range<usize>, //
     /// Also contains the index to the open/close relative.
     tag_type: TagType,

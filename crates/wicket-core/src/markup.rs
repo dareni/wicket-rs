@@ -73,7 +73,7 @@ impl Markup {
                         response.write_str(&self.source[tag.tag.pos()..])?;
                         let _clone = tag.shadow_copy();
                         //TODO: Let each component render it's dynamic content.
-                        web_page.render_component(ComponentId::TagId(tag.id), response)?;
+                        web_page.render_component(ComponentId::TagId(tag.tag_id), response)?;
                     }
                 }
                 _ => {}

@@ -179,6 +179,7 @@ impl MarkupParser {
                         });
                     }
                 }
+                tag.tag_id = markup.len() as u16;
                 markup.push(MarkupElement::ComponentTag(tag));
             }
         }

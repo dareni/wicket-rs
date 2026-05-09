@@ -93,8 +93,9 @@ pub struct ComponentTag {
     /// Filters and Handlers may add their own attributes to the tag.
     pub user_data: Option<HashMap<String, String>>,
 
-    /// The index to this component in markup stream.
-    pub id: u16,
+    /// An index into the Markup vector of the tag related to this component.
+    /// TODO: Create a u16 index type to enforce safe conversion from usize to u16 index.
+    pub tag_id: u16,
 }
 
 impl Default for ComponentTag {
@@ -107,7 +108,7 @@ impl Default for ComponentTag {
             markup_ref: Option::None,
             behaviors: Option::None,
             user_data: Option::None,
-            id: 0,
+            tag_id: 0,
         }
     }
 }
