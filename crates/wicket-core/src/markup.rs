@@ -49,6 +49,18 @@ impl Markup {
         Self::default()
     }
 
+    // Pulled on WebPage creation to build a map of wicket MarkupElements and
+    // their Component counterparts.
+    pub fn get_component_tags(&self) -> Vec<u16> {
+        self.elements
+            .iter()
+            .filter_map(|me| match me {
+                MarkupElement::ComponentTag(ct) => Some(ct.tag_id),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Render from here.
     /// Move away from distributed render MarkupStream, MarkupContainer, MarkupResponse
     pub fn render<T: WebPage>(&self, response: &mut Response, web_page: &T) -> io::Result<()> {

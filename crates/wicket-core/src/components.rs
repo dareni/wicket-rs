@@ -45,9 +45,10 @@ pub struct Page {
     _instance_id: u8,
     // Central page component store, contains all page components with the
     // exception of the children of list views.
+    // Each container component has a child list and access to page components.
     components: Vec<Box<dyn Component>>,
     tag_id_map: HashMap<u16, InternalId>,
-    // Direct children.
+    // Direct children of the page.
     children: Vec<u16>,
 }
 
