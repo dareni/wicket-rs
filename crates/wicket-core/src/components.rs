@@ -7,7 +7,10 @@ use crate::request::Response;
 pub trait Component {
     fn markup_id(&self) -> &str;
     fn set_internal_id(&self, id: InternalId);
+    fn get_internal_id(&self) -> Option<InternalId>;
     fn render(&self, response: &dyn Write) -> std::io::Result<RedirectAction>;
+    fn get_parent(&self) -> Option<InternalId>;
+    fn set_parent(&self, index: InternalId);
 }
 pub struct MarkupContainer {}
 
@@ -30,6 +33,7 @@ pub trait PageIdentifier {
 
 // TODO: add Send + Sync for disk storage.
 pub trait WebPage: PageIdentifier {
+    fn init(&self) {}
     ///Render the component from ajax context
     fn render_component(
         &self,
@@ -39,14 +43,15 @@ pub trait WebPage: PageIdentifier {
 }
 
 pub struct Page {
-    // Internal component id, should this be the index into components?.
-    id_counter: u16,
     // Unique Id for this page instance.
     _instance_id: u8,
-    // Central page component store, contains all page components with the
-    // exception of the children of list views.
+    // Central page component store, contains all page components
+    // including of the children of list views, parent pages(markup inheritance)
+    // and their components,.
     // Each container component has a child list and access to page components.
     components: Vec<Box<dyn Component>>,
+    // Indices of the pages: BasePage, SubBasePage.
+    _inheritance_chain: Vec<usize>,
     tag_id_map: HashMap<u16, InternalId>,
     // Direct children of the page.
     children: Vec<u16>,
@@ -59,20 +64,13 @@ impl PageIdentifier for Page {
 }
 
 impl Page {
-    fn next_id(&mut self) -> InternalId {
-        let id = InternalId::from(self.id_counter);
-        // Safety check for u16 overflow
-        self.id_counter = self
-            .id_counter
-            .checked_add(1)
-            .expect("InternalId overflow: Too many components on one page");
-        id
-    }
-
     pub fn store(&mut self, component: Box<dyn Component>) -> InternalId {
-        let id = self.next_id();
+        let id = InternalId::from(self.components.len());
+        if component.get_internal_id().is_some() {
+            panic!("Component {} is already registered!", component.markup_id());
+        }
         component.set_internal_id(id);
-        self.components.insert(id.into(), component);
+        self.components.push(component);
         id
     }
 
@@ -112,7 +110,16 @@ impl WebPage for Page {
 }
 /// A type-safe wrapper for component IDs within a single Page.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct InternalId(pub(crate) u16);
+// pub struct InternalId(pub(crate) u16);
+pub struct InternalId(u16);
+
+impl From<usize> for InternalId {
+    fn from(value: usize) -> Self {
+        let val = u16::try_from(value)
+            .unwrap_or_else(|_| panic!("Component Id exceeded maximum count {}.", value));
+        Self(val)
+    }
+}
 
 impl From<InternalId> for u16 {
     fn from(value: InternalId) -> Self {
