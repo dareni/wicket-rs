@@ -122,7 +122,10 @@ impl Response {
 
 impl Write for Response {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.body.write(buf)
+        match self.body {
+            ResponseBody::Empty => panic!("Can not write to Response without a buffer!"),
+            _ => self.body.write(buf),
+        }
     }
 
     fn flush(&mut self) -> std::io::Result<()> {

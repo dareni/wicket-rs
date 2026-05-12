@@ -70,6 +70,7 @@ mod test {
     struct TestPage {}
 
     impl WebPage for TestPage {
+        // Use render_component() to test the page instant.
         fn render_component(
             &self,
             _id: ComponentId,
@@ -104,6 +105,7 @@ mod test {
     pub fn webpage_constructor_test() {
         let web_page = construct_page(&TESTPAGE_ID, None);
         let mut response = Response::new();
+        response.set_body(ResponseBody::Buffered(vec![]));
         web_page
             .render_component(ComponentId::TagId(0), &mut response)
             .ok();
@@ -122,6 +124,7 @@ mod test {
     }
 
     impl WebPage for ParameterizedPage {
+        // Use render_component() to test the page instant.
         fn render_component(
             &self,
             _id: ComponentId,
@@ -148,8 +151,8 @@ mod test {
     pub fn webpage_parameter_test() {
         let param = PageParameters::new().add("data".to_string(), "abc123".to_string());
         let web_page = construct_page(&WICKETPAGEID_PARAMETERIZEDPAGE, Some(param));
-        // let mut response = Response { body: ResponseBody::Buffered(Vec::new()), content_type: None, headers: None, status: 0, };
         let mut response = Response::new();
+        response.set_body(ResponseBody::Buffered(vec![]));
         web_page
             .render_component(ComponentId::TagId(0), &mut response)
             .ok();
