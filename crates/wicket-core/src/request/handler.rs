@@ -1,12 +1,12 @@
 use wicket_request::request::mapper::parameter::PageParameters;
 
 use crate::{
-    components::{PageType, WebPage},
+    components::{PageHandle, PageType, WebPage},
     request::{
         cycle::{RedirectAction, SessionProvider},
         RequestHandler,
     },
-    session::page_factory::construct_page,
+    session::{page_factory::construct_page_type, SessionData},
 };
 
 /// Fresh creation: page_type, params.
@@ -31,9 +31,24 @@ impl PageProvider {
         }
     }
 
-    pub fn get_instance(&mut self) -> Box<dyn WebPage> {
-        construct_page(self.page_type, self.params.take())
+    pub fn get_page_handle<'a>(&mut self, session: &'a SessionData) -> Option<PageHandle<'a>> {
+        let dirty = false;
+        match self.page_id {
+            Some(instance_id) => {
+                let wpo = session.get_page(instance_id, self.render_id.unwrap_or(0));
+                wpo.map(|page| PageHandle::Borrowed { page, dirty })
+            }
+            None => {
+                let p = construct_page_type(self.page_type, self.params.take());
+                p.map(|page| PageHandle::Owned { page, dirty })
+            }
+        }
     }
+
+    pub fn get_instance(&mut self) -> Option<Box<dyn WebPage>> {
+        construct_page_type(self.page_type, self.params.take())
+    }
+
     pub fn needs_session_lookup(&self) -> bool {
         self.page_id.is_some()
     }

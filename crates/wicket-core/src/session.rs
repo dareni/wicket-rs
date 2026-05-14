@@ -105,6 +105,6 @@ impl SessionData {
         self.pages
             .get(&page_instance)
             .and_then(|vec| vec.get(page_version as usize))
-            .map(|boxed| boxed.as_ref())
+            .map(|boxed| &**boxed)
     }
 }

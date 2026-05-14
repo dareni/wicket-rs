@@ -1,10 +1,12 @@
 use std::io::Write;
 use std::{collections::HashMap, fmt::Display};
 
+use dyn_clone::{clone_trait_object, DynClone};
+
 use crate::request::cycle::RedirectAction;
 use crate::request::Response;
 
-pub trait Component {
+pub trait Component: DynClone {
     fn markup_id(&self) -> &str;
     fn set_internal_id(&self, id: InternalId);
     fn get_internal_id(&self) -> Option<InternalId>;
@@ -12,6 +14,8 @@ pub trait Component {
     fn get_parent(&self) -> Option<InternalId>;
     fn set_parent(&self, index: InternalId);
 }
+clone_trait_object!(Component);
+
 pub struct MarkupContainer {}
 
 #[derive(Default)]
@@ -27,12 +31,13 @@ pub struct PageType {
     pub name: &'static str,
 }
 
+/// Implemented by proc_macro_derive wicket_page.
 pub trait PageIdentifier {
     fn get_page_identity(&self) -> &PageType;
 }
 
 // TODO: add Send + Sync for disk storage.
-pub trait WebPage: PageIdentifier {
+pub trait WebPage: PageIdentifier + DynClone {
     fn init(&self) {}
     ///Render the component from ajax context
     fn render_component(
@@ -41,7 +46,9 @@ pub trait WebPage: PageIdentifier {
         response: &mut Response,
     ) -> std::io::Result<RedirectAction>;
 }
+clone_trait_object!(WebPage);
 
+#[derive(Clone)]
 pub struct Page {
     // Unique Id for this page instance.
     _instance_id: u8,
@@ -144,5 +151,57 @@ impl From<InternalId> for usize {
 impl Display for InternalId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+pub enum PageHandle<'a> {
+    Borrowed {
+        page: &'a dyn WebPage,
+        dirty: bool,
+    },
+    Owned {
+        page: Box<dyn WebPage + 'a>,
+        dirty: bool,
+    },
+}
+
+impl<'a> std::ops::Deref for PageHandle<'a> {
+    type Target = dyn WebPage + 'a;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            PageHandle::Borrowed { page, dirty: _ } => *page,
+            PageHandle::Owned { page, dirty: _ } => page.as_ref(),
+        }
+    }
+}
+
+impl<'a> PageHandle<'a> {
+    pub fn as_trait(&self) -> &dyn WebPage {
+        match self {
+            PageHandle::Borrowed { page, dirty: _ } => *page,
+            PageHandle::Owned { page, dirty: _ } => page.as_ref(),
+        }
+    }
+
+    pub fn to_mut(&mut self) -> &mut (dyn WebPage + 'a) {
+        if let PageHandle::Borrowed { page, dirty: _ } = *self {
+            *self = PageHandle::Owned {
+                page: dyn_clone::clone_box(page),
+                dirty: false,
+            };
+        }
+
+        match self {
+            PageHandle::Owned { page, dirty: _ } => page.as_mut(),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn into_owned(self) -> Box<dyn WebPage + 'a> {
+        match self {
+            PageHandle::Borrowed { page, dirty: _ } => dyn_clone::clone_box(page),
+            PageHandle::Owned { page, dirty: _ } => page,
+        }
     }
 }

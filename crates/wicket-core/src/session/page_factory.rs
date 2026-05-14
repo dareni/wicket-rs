@@ -30,20 +30,16 @@ fn create_page_factory_map() -> HashMap<u16, &'static PageEntry> {
     }
     page_map
 }
+pub fn construct_page_type(
+    id: &PageType,
+    params: Option<PageParameters>,
+) -> Option<Box<dyn WebPage>> {
+    construct_page(id.id, params)
+}
 
-pub fn construct_page(id: &PageType, params: Option<PageParameters>) -> Box<dyn WebPage> {
+pub fn construct_page(id: u16, params: Option<PageParameters>) -> Option<Box<dyn WebPage>> {
     let page_inventory = PAGE_FACTORY.get_or_init(&create_page_factory_map);
-
-    let constructor = page_inventory
-        .get(&id.id)
-        .unwrap_or_else(|| {
-            panic!(
-                "Error: PageFactory does not contain name:'{}' id:'{}'",
-                id.name, id.id
-            )
-        })
-        .constructor;
-    constructor(params)
+    page_inventory.get(&id).map(|pe| (pe.constructor)(params))
 }
 
 struct PageEntry {
@@ -67,6 +63,7 @@ mod test {
 
     use super::*;
 
+    #[derive(Clone)]
     struct TestPage {}
 
     impl WebPage for TestPage {
@@ -103,7 +100,7 @@ mod test {
 
     #[test]
     pub fn webpage_constructor_test() {
-        let web_page = construct_page(&TESTPAGE_ID, None);
+        let web_page = construct_page_type(&TESTPAGE_ID, None).unwrap();
         let mut response = Response::new();
         response.set_body(ResponseBody::Buffered(vec![]));
         web_page
@@ -150,7 +147,7 @@ mod test {
     #[test]
     pub fn webpage_parameter_test() {
         let param = PageParameters::new().add("data".to_string(), "abc123".to_string());
-        let web_page = construct_page(&WICKETPAGEID_PARAMETERIZEDPAGE, Some(param));
+        let web_page = construct_page_type(&WICKETPAGEID_PARAMETERIZEDPAGE, Some(param)).unwrap();
         let mut response = Response::new();
         response.set_body(ResponseBody::Buffered(vec![]));
         web_page

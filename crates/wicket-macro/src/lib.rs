@@ -53,6 +53,7 @@ pub fn wicket_page(_attribs: TokenStream, item: TokenStream) -> TokenStream {
     let id = hash_string(name.to_string().as_str());
     let expanded = quote! {
 
+    #[derive(Clone)]
     #input
 
     #location_impl
