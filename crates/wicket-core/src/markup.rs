@@ -15,7 +15,7 @@ use wicket_util::parse::metapattern::core::Pattern;
 use wicket_util::static_pattern;
 
 use crate::components::ComponentId;
-use crate::components::WebPage;
+use crate::components::MarkupContainer;
 use crate::markup::loader::{DefaultMarkupResourceStreamProvider, MarkupResourceStreamProvider};
 use crate::markup::markup_element::MarkupElement;
 use crate::request::Response;
@@ -63,7 +63,11 @@ impl Markup {
 
     /// Render from here.
     /// Move away from distributed render MarkupStream, MarkupContainer, MarkupResponse
-    pub fn render<T: WebPage>(&self, response: &mut Response, web_page: &T) -> io::Result<()> {
+    pub fn render<T: MarkupContainer>(
+        &self,
+        response: &mut Response,
+        markup_container: &T,
+    ) -> io::Result<()> {
         for element in &self.elements {
             match element {
                 // The "Super-Slice" Win: High-speed block copy
@@ -85,7 +89,8 @@ impl Markup {
                         response.write_str(&self.source[tag.tag.pos()..])?;
                         let _clone = tag.shadow_copy();
                         //TODO: Let each component render it's dynamic content.
-                        web_page.render_component(ComponentId::TagId(tag.tag_id), response)?;
+                        markup_container
+                            .render_component(ComponentId::TagId(tag.tag_id), response)?;
                     }
                 }
                 _ => {}

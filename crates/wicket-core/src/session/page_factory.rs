@@ -5,7 +5,7 @@ use std::{
 
 use wicket_request::request::mapper::parameter::PageParameters;
 
-use crate::components::{PageType, WebPage};
+use crate::components::{MarkupType, WebPage};
 
 inventory::collect!(PageEntry);
 
@@ -31,7 +31,7 @@ fn create_page_factory_map() -> HashMap<u16, &'static PageEntry> {
     page_map
 }
 pub fn construct_page_type(
-    id: &PageType,
+    id: &MarkupType,
     params: Option<PageParameters>,
 ) -> Option<Box<dyn WebPage>> {
     construct_page(id.id, params)
@@ -43,7 +43,7 @@ pub fn construct_page(id: u16, params: Option<PageParameters>) -> Option<Box<dyn
 }
 
 struct PageEntry {
-    id: &'static PageType,
+    id: &'static MarkupType,
     constructor: WebPageConstructor,
 }
 
@@ -55,7 +55,8 @@ mod test {
     use wicket_util::constants::file_ext;
 
     use crate::components::ComponentId;
-    use crate::components::PageIdentifier;
+    use crate::components::MarkupContainer;
+    use crate::components::MarkupIdentifier;
     use crate::markup::loader::MarkupResourceLocationUtil;
     use crate::request::cycle::RedirectAction;
     use crate::request::Response;
@@ -66,7 +67,7 @@ mod test {
     #[derive(Clone)]
     struct TestPage {}
 
-    impl WebPage for TestPage {
+    impl MarkupContainer for TestPage {
         // Use render_component() to test the page instant.
         fn render_component(
             &self,
@@ -77,14 +78,15 @@ mod test {
             Ok(RedirectAction::None)
         }
     }
+    impl WebPage for TestPage {}
 
-    static TESTPAGE_ID: PageType = PageType {
+    static TESTPAGE_ID: MarkupType = MarkupType {
         id: hash_string("TestPage"),
         name: "TestPage",
     };
 
-    impl PageIdentifier for TestPage {
-        fn get_page_identity(&self) -> &PageType {
+    impl MarkupIdentifier for TestPage {
+        fn get_markup_identity(&self) -> &MarkupType {
             &TESTPAGE_ID
         }
     }
@@ -120,7 +122,7 @@ mod test {
         data: String,
     }
 
-    impl WebPage for ParameterizedPage {
+    impl MarkupContainer for ParameterizedPage {
         // Use render_component() to test the page instant.
         fn render_component(
             &self,
@@ -131,6 +133,7 @@ mod test {
             Ok(RedirectAction::None)
         }
     }
+    impl WebPage for ParameterizedPage {}
 
     impl ParameterizedPage {
         fn create_from_params(page_parameters: Option<PageParameters>) -> Self {

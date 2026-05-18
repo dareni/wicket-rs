@@ -20,7 +20,7 @@ pub struct SimplePageStore {
 
 impl PageStore for SimplePageStore {
     fn store_page(&mut self, version: u16, page: Box<dyn WebPage>) -> u16 {
-        let page_id = page.get_page_identity().id;
+        let page_id = page.get_markup_identity().id;
 
         let versions = self
             .pages

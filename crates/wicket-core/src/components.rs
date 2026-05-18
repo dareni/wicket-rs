@@ -16,7 +16,25 @@ pub trait Component: DynClone {
 }
 clone_trait_object!(Component);
 
-pub struct MarkupContainer {}
+/// A container of components with associated HTML/XML markup.
+///
+/// This trait requires a unique identifier (typically auto-generated
+/// via proc-macros) which serves as the key to resolve the container's
+/// markup stream.
+///
+/// ### Usage
+/// **For Pages:** The unique identifier is used for dynamic runtime
+///     construction of the component tree.
+/// **For Standard Containers:** The identifier is used as a lookup key
+///     to retrieve pre-parsed markup from the cache.
+pub trait MarkupContainer: MarkupIdentifier {
+    ///  Render the child component from create or ajax context.
+    fn render_component(
+        &self,
+        id: ComponentId,
+        response: &mut Response,
+    ) -> std::io::Result<RedirectAction>;
+}
 
 #[derive(Default)]
 pub struct MarkupIdGenerator {}
@@ -26,25 +44,20 @@ pub enum ComponentId {
     TagId(u16),
 }
 
-pub struct PageType {
+/// A unique identifier for a MarkupContainer: page, panel, fragment.
+pub struct MarkupType {
     pub id: u16,
     pub name: &'static str,
 }
 
 /// Implemented by proc_macro_derive wicket_page.
-pub trait PageIdentifier {
-    fn get_page_identity(&self) -> &PageType;
+pub trait MarkupIdentifier {
+    fn get_markup_identity(&self) -> &MarkupType;
 }
 
 // TODO: add Send + Sync for disk storage.
-pub trait WebPage: PageIdentifier + DynClone {
+pub trait WebPage: MarkupContainer + DynClone {
     fn init(&self) {}
-    ///Render the component from ajax context
-    fn render_component(
-        &self,
-        id: ComponentId,
-        response: &mut Response,
-    ) -> std::io::Result<RedirectAction>;
 }
 clone_trait_object!(WebPage);
 
@@ -64,8 +77,8 @@ pub struct Page {
     children: Vec<u16>,
 }
 
-impl PageIdentifier for Page {
-    fn get_page_identity(&self) -> &PageType {
+impl MarkupIdentifier for Page {
+    fn get_markup_identity(&self) -> &MarkupType {
         panic!("Error: Missing proc_macro_derive. Add wicket_page attribute to the page.")
     }
 }
@@ -85,9 +98,12 @@ impl Page {
         let id = self.store(component);
         self.children.push(id.into());
     }
+
+    ///  Performed once per page type. The bind result is cache with the markup element vector.
+    pub fn bind_markup() {}
 }
 
-impl WebPage for Page {
+impl MarkupContainer for Page {
     fn render_component(
         &self,
         id: ComponentId,

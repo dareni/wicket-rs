@@ -1,7 +1,7 @@
 use wicket_request::request::mapper::parameter::PageParameters;
 
 use crate::{
-    components::{PageHandle, PageType, WebPage},
+    components::{MarkupType, PageHandle, WebPage},
     request::{
         cycle::{RedirectAction, SessionProvider},
         RequestHandler,
@@ -12,7 +12,7 @@ use crate::{
 /// Fresh creation: page_type, params.
 /// Identity: page_id, render_id.
 pub struct PageProvider {
-    pub page_type: &'static PageType,
+    pub page_type: &'static MarkupType,
     // The data taken to construct the page.
     pub params: Option<PageParameters>,
     // The instance of a page, caters to multiple tabs.
@@ -22,7 +22,7 @@ pub struct PageProvider {
 }
 
 impl PageProvider {
-    pub fn new(page_type: &'static PageType, params: Option<PageParameters>) -> Self {
+    pub fn new(page_type: &'static MarkupType, params: Option<PageParameters>) -> Self {
         Self {
             page_type,
             params,

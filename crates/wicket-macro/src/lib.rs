@@ -58,13 +58,13 @@ pub fn wicket_page(_attribs: TokenStream, item: TokenStream) -> TokenStream {
 
     #location_impl
 
-    pub static #const_name : PageType = PageType {
+    pub static #const_name : MarkupType = MarkupType {
         id: #id,
         name: stringify!(#name),
     };
 
-     impl PageIdentifier for #name {
-         fn get_page_identity(&self) -> &'static PageType {
+     impl MarkupIdentifier for #name {
+         fn get_markup_identity(&self) -> &'static MarkupType {
              &#const_name
          }
      }

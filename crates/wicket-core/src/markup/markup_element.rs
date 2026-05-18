@@ -7,7 +7,7 @@ use std::slice::Iter;
 use bitflags::bitflags;
 
 use crate::behavior::Behavior;
-use crate::components::{Component, MarkupContainer};
+use crate::components::Component;
 use crate::markup::parser::filter::HtmlHandler;
 use crate::markup::parser::xml_tag::{AttrValue, TagType, XmlTag};
 use crate::request::Response;
@@ -24,10 +24,6 @@ bitflags! {
         const RENDER_RAW         = 0b00100000;
         const CONTAINS_WICKET_ID = 0b01000000;
     }
-}
-
-pub trait AutoComponentFactory {
-    fn new_component(container: &MarkupContainer, tag: &ComponentTag);
 }
 
 #[derive(Debug, Clone, Default)]
