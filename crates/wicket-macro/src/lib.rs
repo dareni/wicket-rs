@@ -1,8 +1,16 @@
+mod markup;
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Ident, parse_macro_input};
 
+use crate::markup::dimension_config::run_load_html_dimensions;
 use wicket_macro_support::hash_string;
+
+#[proc_macro]
+pub fn load_html_dimensions(input: TokenStream) -> TokenStream {
+    run_load_html_dimensions(input)
+}
 
 /// The most reliable technique for obtaining module path and struct name.
 #[proc_macro_derive(MarkupResourcePath)]

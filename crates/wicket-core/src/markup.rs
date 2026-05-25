@@ -1,3 +1,4 @@
+pub mod dimensions;
 pub mod loader;
 pub mod markup_element;
 pub mod markup_parser;
