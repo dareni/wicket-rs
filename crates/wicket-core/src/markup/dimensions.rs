@@ -6,6 +6,7 @@ pub struct ValidHtmlDimensions {
     pub country: Option<Vec<String>>,
 }
 
+/// Create a static ValidHtmlDimensions struct from the toml config file.
 #[cfg(not(test))]
 pub mod dimension_provider {
     use super::ValidHtmlDimensions;
