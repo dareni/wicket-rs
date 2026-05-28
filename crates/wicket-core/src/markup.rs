@@ -146,6 +146,16 @@ impl MarkupFactory {
     }
 }
 
+/// style, variation, lang, country index to ValidHtmlDimensions
+#[derive(Clone, Debug)]
+pub struct MarkupResource {
+    pub style: Option<u8>,
+    pub variation: Option<u8>,
+    pub lang: Option<u8>,
+    pub country: Option<u8>,
+    pub markup_str: Cow<'static, str>,
+}
+
 pub trait ResourceStream {
     fn get_variation(&self) -> Option<&str> {
         None

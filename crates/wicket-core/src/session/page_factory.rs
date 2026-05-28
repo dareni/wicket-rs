@@ -52,11 +52,11 @@ mod test {
     use wicket_macro::wicket_page;
     use wicket_macro_support::hash_string;
     use wicket_request::request::mapper::parameter::PageParameters;
-    use wicket_util::constants::file_ext;
 
     use crate::components::ComponentId;
     use crate::components::MarkupContainer;
     use crate::components::MarkupIdentifier;
+    use crate::components::MarkupLookup;
     use crate::markup::loader::MarkupResourceLocationUtil;
     use crate::request::cycle::RedirectAction;
     use crate::request::Response;
@@ -67,6 +67,20 @@ mod test {
     #[derive(Clone)]
     struct TestPage {}
 
+    impl MarkupResourceLocationUtil for TestPage {
+        fn get_component_path(&self) -> &'static str {
+            unreachable!()
+        }
+
+        fn get_component_name(&self) -> &'static str {
+            unreachable!()
+        }
+
+        fn get_markup_type(&self) -> &'static str {
+            unreachable!()
+        }
+    }
+
     impl MarkupContainer for TestPage {
         // Use render_component() to test the page instant.
         fn render_component(
@@ -76,6 +90,18 @@ mod test {
         ) -> std::io::Result<RedirectAction> {
             response.write_str("Render TestPage components")?;
             Ok(RedirectAction::None)
+        }
+    }
+
+    impl MarkupLookup for TestPage {
+        fn lookup_markup(
+            &self,
+            _style: Option<&str>,
+            _variation: Option<&str>,
+            _lang: Option<&str>,
+            _country: Option<&str>,
+        ) -> ::std::borrow::Cow<'static, str> {
+            unreachable!()
         }
     }
     impl WebPage for TestPage {}
@@ -117,7 +143,7 @@ mod test {
         );
     }
 
-    #[wicket_page]
+    #[wicket_page("tests/resources/html/session/page_factory")]
     struct ParameterizedPage {
         data: String,
     }
@@ -133,6 +159,7 @@ mod test {
             Ok(RedirectAction::None)
         }
     }
+
     impl WebPage for ParameterizedPage {}
 
     impl ParameterizedPage {

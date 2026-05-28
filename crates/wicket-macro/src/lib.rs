@@ -2,11 +2,13 @@ mod markup;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, Ident, parse_macro_input};
+use syn::{DeriveInput, Ident, LitStr, parse_macro_input};
 
-use crate::markup::dimension_config::run_load_html_dimensions;
+use crate::markup::{dimension_config::run_load_html_dimensions, discovery::config_static_html};
 use wicket_macro_support::hash_string;
 
+/// Create a static ValidHtmlDimensions struct from the toml config file.
+/// See [::wicket-core::markup::dimensions::dimension_provider]
 #[proc_macro]
 pub fn load_html_dimensions(input: TokenStream) -> TokenStream {
     run_load_html_dimensions(input)
@@ -37,7 +39,7 @@ fn get_impl_markup_resource_location_util(name: &Ident) -> proc_macro2::TokenStr
             }
 
             fn get_markup_type(&self) -> &'static str {
-               file_ext::HTML
+               ::wicket_util::constants::file_ext::HTML
             }
 
         }
@@ -46,12 +48,27 @@ fn get_impl_markup_resource_location_util(name: &Ident) -> proc_macro2::TokenStr
     expanded
 }
 
+#[proc_macro_attribute]
+pub fn wicket_markup_container(attribs: TokenStream, item: TokenStream) -> TokenStream {
+    let item_input = parse_macro_input!(item as DeriveInput);
+    let name = &item_input.ident;
+    let comp_dir_attrib = parse_macro_input!(attribs as LitStr);
+    let component_dir: String = comp_dir_attrib.value();
+
+    config_static_html(&component_dir, name).into()
+}
+
 const PAGE_ID_CONST_PREFIX: &str = "WICKETPAGEID_";
 
 #[proc_macro_attribute]
-pub fn wicket_page(_attribs: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as DeriveInput);
-    let name = &input.ident;
+pub fn wicket_page(attribs: TokenStream, item: TokenStream) -> TokenStream {
+    let comp_dir_attrib = parse_macro_input!(attribs as LitStr);
+    let component_dir: String = comp_dir_attrib.value();
+
+    let item_input = parse_macro_input!(item as DeriveInput);
+    let name = &item_input.ident;
+    let html_data = config_static_html(&component_dir, name);
+
     let const_name = quote::format_ident!(
         "{}{}",
         PAGE_ID_CONST_PREFIX,
@@ -62,7 +79,7 @@ pub fn wicket_page(_attribs: TokenStream, item: TokenStream) -> TokenStream {
     let expanded = quote! {
 
     #[derive(Clone)]
-    #input
+    #item_input
 
     #location_impl
 
@@ -76,6 +93,8 @@ pub fn wicket_page(_attribs: TokenStream, item: TokenStream) -> TokenStream {
              &#const_name
          }
      }
+
+    #html_data
 
     inventory::submit! {
         PageEntry {

@@ -28,7 +28,9 @@ pub fn get_resource_path() -> &'static PathBuf {
 ///       #[derive(MarkupResourcePath)]
 ///       struct AppComponent;
 pub trait MarkupResourceLocationUtil {
+    /// The crate_name:: sub::mod::path::component_name.
     fn get_component_path(&self) -> &'static str;
+    /// The bare component name.
     fn get_component_name(&self) -> &'static str;
     fn get_markup_type(&self) -> &'static str;
 }
@@ -89,7 +91,6 @@ impl MarkupResourceStreamProvider for DefaultMarkupResourceStreamProvider {
 #[cfg(test)]
 mod test {
     use std::{io::Read, path::Path};
-    use wicket_util::constants::file_ext;
 
     use super::MarkupResourceLocationUtil;
     use crate::markup::loader::{

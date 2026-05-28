@@ -3,6 +3,7 @@ use std::{collections::HashMap, fmt::Display};
 
 use dyn_clone::{clone_trait_object, DynClone};
 
+use crate::markup::loader::MarkupResourceLocationUtil;
 use crate::request::cycle::RedirectAction;
 use crate::request::Response;
 
@@ -27,13 +28,23 @@ clone_trait_object!(Component);
 ///     construction of the component tree.
 /// **For Standard Containers:** The identifier is used as a lookup key
 ///     to retrieve pre-parsed markup from the cache.
-pub trait MarkupContainer: MarkupIdentifier {
+pub trait MarkupContainer: MarkupIdentifier + MarkupResourceLocationUtil + MarkupLookup {
     ///  Render the child component from create or ajax context.
     fn render_component(
         &self,
         id: ComponentId,
         response: &mut Response,
     ) -> std::io::Result<RedirectAction>;
+}
+
+pub trait MarkupLookup {
+    fn lookup_markup(
+        &self,
+        style: Option<&str>,
+        variation: Option<&str>,
+        lang: Option<&str>,
+        country: Option<&str>,
+    ) -> ::std::borrow::Cow<'static, str>;
 }
 
 #[derive(Default)]
@@ -77,12 +88,6 @@ pub struct Page {
     children: Vec<u16>,
 }
 
-impl MarkupIdentifier for Page {
-    fn get_markup_identity(&self) -> &MarkupType {
-        panic!("Error: Missing proc_macro_derive. Add wicket_page attribute to the page.")
-    }
-}
-
 impl Page {
     pub fn store(&mut self, component: Box<dyn Component>) -> InternalId {
         let id = InternalId::from(self.components.len());
@@ -103,8 +108,8 @@ impl Page {
     pub fn bind_markup() {}
 }
 
-impl MarkupContainer for Page {
-    fn render_component(
+impl Page {
+    pub fn render_component(
         &self,
         id: ComponentId,
         response: &mut Response,
