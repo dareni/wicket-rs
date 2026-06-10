@@ -129,6 +129,7 @@ impl XmlString {
     }
 }
 
+/// Note the use of XmlString to allow for the modification of the original html string by filters.
 pub struct XmlTag {
     /// The entire xml source containing this tag.
     source: Arc<str>,

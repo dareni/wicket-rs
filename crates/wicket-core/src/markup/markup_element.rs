@@ -1,13 +1,9 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops::Range;
-use std::rc::Rc;
-use std::slice::Iter;
 
 use bitflags::bitflags;
 
-use crate::behavior::Behavior;
-use crate::components::Component;
 use crate::markup::parser::filter::HtmlHandler;
 use crate::markup::parser::xml_tag::{AttrValue, TagType, XmlTag};
 use crate::request::Response;
@@ -78,13 +74,8 @@ pub struct ComponentTag {
     /// Framework metadata.
     pub wicket: Option<WicketTag>,
 
-    /// In case of inherited markup, the base and the extended markups are merged and the information
-    /// about the tags origin is lost. In some cases like wicket:head and wicket:link this
-    /// information however is required.
-    pub markup_ref: Option<Rc<dyn Component>>,
-
-    /// Added behaviours.
-    pub behaviors: Option<Vec<Box<dyn Behavior>>>,
+    /// Added behaviours via markup. eg  <span wicket:id="totalPrice" wicket:behavior="FormatCurrency">.
+    pub behaviors: Option<Range<usize>>,
 
     /// Filters and Handlers may add their own attributes to the tag.
     pub user_data: Option<HashMap<String, String>>,
@@ -101,7 +92,6 @@ impl Default for ComponentTag {
             tag: XmlTag::new(),
             flags: ComponentTagFlags::NONE,
             wicket: None,
-            markup_ref: Option::None,
             behaviors: Option::None,
             user_data: Option::None,
             tag_id: 0,
@@ -125,13 +115,8 @@ impl ComponentTag {
         }
     }
 
-    pub fn add_behavior<T: Behavior + 'static>(&mut self, behavior: T) {
-        match &mut self.behaviors {
-            Some(vec) => vec.push(Box::new(behavior)),
-            None => {
-                self.behaviors = Some(vec![Box::new(behavior)]);
-            }
-        }
+    pub fn add_behavior(&mut self, behaviors_range: Range<usize>) {
+        self.behaviors = Some(behaviors_range);
     }
 
     pub fn has_behaviors(&self) -> bool {
@@ -141,10 +126,12 @@ impl ComponentTag {
         }
     }
 
-    pub fn get_behaviors<'a>(&'a self) -> std::slice::Iter<'a, Box<dyn Behavior>> {
+    /// Return the comma delimited strings representing the names of behaviours added to the
+    /// component in the html tag attribute..
+    pub fn get_behaviors(&self) -> Option<&str> {
         match &self.behaviors {
-            Some(vec) => vec.iter(),
-            None => [].iter() as Iter<Box<dyn Behavior>>,
+            Some(range) => Some(&self.get_xml_tag().source()[range.clone()]),
+            None => None,
         }
     }
 
@@ -279,16 +266,6 @@ impl ComponentTag {
     /// True when the current tag contains a child or a descendant with the "wicket::id" attribute.
     pub fn is_contains_wicket_id(&self) -> bool {
         (self.flags & ComponentTagFlags::CONTAINS_WICKET_ID).is_empty()
-    }
-
-    /// Retrieve the component containing the wicket:head tag.
-    pub fn get_markup_component(&self) -> &Option<Rc<dyn Component>> {
-        &self.markup_ref
-    }
-
-    /// Set the component containing the wicket:head tag.
-    pub fn set_markup_component(&mut self, wicket_header_component: Option<Rc<dyn Component>>) {
-        self.markup_ref = wicket_header_component;
     }
 
     pub fn eq_to(&self, element: &MarkupElement) -> bool {
