@@ -11,3 +11,6 @@ wicket-macro= { version = "0.1.0", path = "crates/wicket-macro", default-feature
 wicket-macro-support= { version = "0.1.0", path = "crates/wicket-macro-support", default-features = false }
 wicket-request= { version = "0.1.0", path = "crates/wicket-request", default-features = false }
 wicket-util= { version = "0.1.0", path = "crates/wicket-util", default-features = false }
+
+[rust-analyzer]
+cargo = { allTargets = true }
