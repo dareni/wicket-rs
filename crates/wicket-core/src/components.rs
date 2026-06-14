@@ -5,9 +5,11 @@ use dyn_clone::{clone_trait_object, DynClone};
 use wicket_request::request::mapper::parameter::PageParameters;
 
 use crate::markup::loader::MarkupResourceLocationUtil;
+use crate::markup::MarkupResource;
 use crate::request::cycle::RedirectAction;
 use crate::request::Response;
 
+/// Component needs clone for session page caching.
 pub trait Component: DynClone {
     fn markup_id(&self) -> &str;
     fn set_internal_id(&self, id: InternalId);
@@ -20,9 +22,8 @@ clone_trait_object!(Component);
 
 /// A container of components with associated HTML/XML markup.
 ///
-/// This trait requires a unique identifier (typically auto-generated
-/// via proc-macros) which serves as the key to resolve the container's
-/// markup stream.
+/// This trait requires a unique identifier (auto-generated via proc-macros) which
+/// serves as the key to resolve the container's markup stream.
 ///
 /// ### Usage
 /// **For Pages:** The unique identifier is used for dynamic runtime
@@ -41,11 +42,12 @@ pub trait MarkupContainer: MarkupIdentifier + MarkupResourceLocationUtil + Marku
 pub trait MarkupLookup {
     fn lookup_markup(
         &self,
-        style: Option<&str>,
-        variation: Option<&str>,
-        lang: Option<&str>,
-        country: Option<&str>,
-    ) -> ::std::borrow::Cow<'static, str>;
+        style: Option<u8>,
+        variation: Option<u8>,
+        lang: Option<u8>,
+        country: Option<u8>,
+    ) -> Option<&MarkupResource>;
+    // ) -> ::std::borrow::Cow<'static, str>;
 }
 
 #[derive(Default)]
@@ -71,7 +73,8 @@ pub trait FromPageParameters {
     fn from_page_params(page_params: Option<PageParameters>) -> Box<dyn WebPage>;
 }
 
-// TODO: add Send + Sync for disk storage.
+// TODO: Implement Send + Sync to allow multi-threaded
+// request handling and disk state persistence.
 pub trait WebPage: MarkupContainer + DynClone {
     fn init(&self) {}
 }

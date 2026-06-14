@@ -67,6 +67,7 @@ mod test {
     use crate::components::MarkupIdentifier;
     use crate::components::MarkupLookup;
     use crate::markup::loader::MarkupResourceLocationUtil;
+    use crate::markup::MarkupResource;
     use crate::request::cycle::RedirectAction;
     use crate::request::Response;
     use crate::request::ResponseBody;
@@ -105,11 +106,11 @@ mod test {
     impl MarkupLookup for TestPage {
         fn lookup_markup(
             &self,
-            _style: Option<&str>,
-            _variation: Option<&str>,
-            _lang: Option<&str>,
-            _country: Option<&str>,
-        ) -> ::std::borrow::Cow<'static, str> {
+            _style: Option<u8>,
+            _variation: Option<u8>,
+            _lang: Option<u8>,
+            _country: Option<u8>,
+        ) -> Option<&MarkupResource> {
             unreachable!()
         }
     }
@@ -181,8 +182,6 @@ mod test {
     }
 
     impl WebPage for ParameterizedPage {}
-
-    }
 
     #[test]
     pub fn webpage_parameter_test() {

@@ -14,9 +14,10 @@ serde = {version = "1.0.228", features=["derive"]}
 toml = "1.1.2"
 
 wicket-macro-support = { path = "../wicket-macro-support/"}
+proc-macro-crate = "3.5.0"
 
 [features]
-default = ["dev", "codegen-match"]
+default = ["dev", "codegen-static-slice"]
 dev = []
 codegen-match= []
 codegen-static-slice = []
