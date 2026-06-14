@@ -2,6 +2,7 @@ use std::io::Write;
 use std::{collections::HashMap, fmt::Display};
 
 use dyn_clone::{clone_trait_object, DynClone};
+use wicket_request::request::mapper::parameter::PageParameters;
 
 use crate::markup::loader::MarkupResourceLocationUtil;
 use crate::request::cycle::RedirectAction;
@@ -64,6 +65,10 @@ pub struct MarkupType {
 /// Implemented by proc_macro_derive wicket_page.
 pub trait MarkupIdentifier {
     fn get_markup_identity(&self) -> &MarkupType;
+}
+
+pub trait FromPageParameters {
+    fn from_page_params(page_params: Option<PageParameters>) -> Box<dyn WebPage>;
 }
 
 // TODO: add Send + Sync for disk storage.

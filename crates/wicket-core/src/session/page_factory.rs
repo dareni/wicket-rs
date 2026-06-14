@@ -5,7 +5,7 @@ use std::{
 
 use wicket_request::request::mapper::parameter::PageParameters;
 
-use crate::components::{MarkupType, WebPage};
+use crate::components::{FromPageParameters, MarkupType, WebPage};
 
 inventory::collect!(PageEntry);
 
@@ -42,9 +42,18 @@ pub fn construct_page(id: u16, params: Option<PageParameters>) -> Option<Box<dyn
     page_inventory.get(&id).map(|pe| (pe.constructor)(params))
 }
 
-struct PageEntry {
-    id: &'static MarkupType,
-    constructor: WebPageConstructor,
+pub struct PageEntry {
+    pub id: &'static MarkupType,
+    pub constructor: WebPageConstructor,
+}
+
+impl PageEntry {
+    pub fn from_page_params<P>(page_params: Option<PageParameters>) -> Box<dyn WebPage>
+    where
+        P: FromPageParameters,
+    {
+        P::from_page_params(page_params)
+    }
 }
 
 #[cfg(test)]
@@ -147,6 +156,17 @@ mod test {
     struct ParameterizedPage {
         data: String,
     }
+    impl FromPageParameters for ParameterizedPage {
+        fn from_page_params(page_params: Option<PageParameters>) -> Box<dyn WebPage> {
+            let data = page_params
+                .as_ref()
+                .and_then(|p| p.get("data"))
+                .map(|np| np.value.clone())
+                .unwrap_or_else(|| panic!("Parameter does not exist??"));
+
+            Box::new(Self { data })
+        }
+    }
 
     impl MarkupContainer for ParameterizedPage {
         // Use render_component() to test the page instant.
@@ -162,16 +182,6 @@ mod test {
 
     impl WebPage for ParameterizedPage {}
 
-    impl ParameterizedPage {
-        fn create_from_params(page_parameters: Option<PageParameters>) -> Self {
-            let data = page_parameters
-                .as_ref()
-                .and_then(|p| p.get("data"))
-                .map(|np| np.value.clone())
-                .unwrap_or_else(|| panic!("Parameter does not exist??"));
-
-            Self { data }
-        }
     }
 
     #[test]

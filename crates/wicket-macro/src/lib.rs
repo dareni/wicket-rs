@@ -4,7 +4,10 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Ident, LitStr, parse_macro_input};
 
-use crate::markup::{dimension_config::run_load_html_dimensions, discovery::config_static_html};
+use crate::markup::{
+    dimension_config::run_load_html_dimensions,
+    discovery::{config_static_html, get_crate_root},
+};
 use wicket_macro_support::hash_string;
 
 /// Create a static ValidHtmlDimensions struct from the toml config file.
@@ -28,8 +31,9 @@ pub fn derive_markup_resource_path(input: TokenStream) -> TokenStream {
 }
 
 fn get_impl_markup_resource_location_util(name: &Ident) -> proc_macro2::TokenStream {
+    let crate_root = get_crate_root("wicket-core");
     let expanded: proc_macro2::TokenStream = quote! {
-        impl MarkupResourceLocationUtil for #name {
+        impl #crate_root::markup::loader::MarkupResourceLocationUtil for #name {
             fn get_component_path(&self) -> &'static str {
                 module_path!()
             }
@@ -60,6 +64,7 @@ pub fn wicket_markup_container(attribs: TokenStream, item: TokenStream) -> Token
 
 const PAGE_ID_CONST_PREFIX: &str = "WICKETPAGEID_";
 
+/// Note: the target struct must implement FromPageParameters.
 #[proc_macro_attribute]
 pub fn wicket_page(attribs: TokenStream, item: TokenStream) -> TokenStream {
     let comp_dir_attrib = parse_macro_input!(attribs as LitStr);
@@ -76,6 +81,8 @@ pub fn wicket_page(attribs: TokenStream, item: TokenStream) -> TokenStream {
     );
     let location_impl = get_impl_markup_resource_location_util(name);
     let id = hash_string(name.to_string().as_str());
+
+    let crate_root = get_crate_root("wicket-core");
     let expanded = quote! {
 
     #[derive(Clone)]
@@ -83,13 +90,13 @@ pub fn wicket_page(attribs: TokenStream, item: TokenStream) -> TokenStream {
 
     #location_impl
 
-    pub static #const_name : MarkupType = MarkupType {
+    pub static #const_name : #crate_root::components::MarkupType = #crate_root::components::MarkupType {
         id: #id,
         name: stringify!(#name),
     };
 
-     impl MarkupIdentifier for #name {
-         fn get_markup_identity(&self) -> &'static MarkupType {
+     impl #crate_root::components::MarkupIdentifier for #name {
+         fn get_markup_identity(&self) -> &'static #crate_root::components::MarkupType {
              &#const_name
          }
      }
@@ -97,10 +104,10 @@ pub fn wicket_page(attribs: TokenStream, item: TokenStream) -> TokenStream {
     #html_data
 
     inventory::submit! {
-        PageEntry {
+        #crate_root::session::page_factory::PageEntry {
             id: &#const_name,
             constructor: |params| {
-                Box::new(#name::create_from_params(params))
+                #crate_root::session::page_factory::PageEntry::from_page_params::<#name>(params)
             }
         }
     }

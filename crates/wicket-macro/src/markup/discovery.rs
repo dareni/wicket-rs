@@ -144,6 +144,27 @@ impl MarkupCodegenStrategy for MatchStrategy {
     }
 }
 
+pub fn get_crate_root(name: &str) -> TokenStream {
+    let Ok(crate_search) = crate_name(name) else {
+        panic!(
+            "{} wicket-core must be in Cargo.toml. {:?}",
+            name,
+            crate_name(name).err()
+        );
+    };
+
+    match crate_search {
+        // Case A: The macro is being called INSIDE `wicket-core`
+        FoundCrate::Itself => quote! { crate },
+
+        // Case B: The macro is being called from another crate using `::`
+        FoundCrate::Name(name) => {
+            let ident = Ident::new(&name, proc_macro::Span::call_site().into());
+            quote! { ::#ident }
+        }
+    }
+}
+
 /// Create array definition code.
 /// TODO: use rkyv to serialise the array to a binary for inclusion on compile.
 #[allow(dead_code)]
