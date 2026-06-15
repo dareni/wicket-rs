@@ -42,28 +42,6 @@ impl DiscoveredMarkup {
     }
 }
 
-/// Allow for differing html file search/cache strategies.
-pub trait MarkupCodegenStrategy {
-    fn generate_codegen(
-        &self,
-        component_name: &syn::Ident,
-        markups: &mut Vec<DiscoveredMarkup>,
-    ) -> TokenStream;
-}
-
-// Create match arm code.
-#[allow(dead_code)]
-pub struct MatchStrategy;
-impl MarkupCodegenStrategy for MatchStrategy {
-    fn generate_codegen(
-        &self,
-        _component_name: &syn::Ident,
-        _markups: &mut Vec<DiscoveredMarkup>,
-    ) -> TokenStream {
-        unimplemented!()
-    }
-}
-
 pub fn get_crate_root(name: &str) -> TokenStream {
     let Ok(crate_search) = crate_name(name) else {
         panic!(
@@ -88,108 +66,101 @@ pub fn get_crate_root(name: &str) -> TokenStream {
 const MARKUP_RESOURCE_ARRAY_CONST_PREFIX: &str = "_MARKUP_RESOURCE_VEC_";
 
 /// Create array definition code.
-/// TODO: use rkyv to serialise the array to a binary for inclusion on compile.
-pub struct StaticSliceStrategy;
-impl MarkupCodegenStrategy for StaticSliceStrategy {
-    fn generate_codegen(
-        &self,
-        component_name: &syn::Ident,
-        markups: &mut Vec<DiscoveredMarkup>,
-    ) -> TokenStream {
-        let crate_root = get_crate_root("wicket-core");
-        let valid_dimensions = load_dimensions();
-        let array_elements = markups.iter().map(|m| {
-            let style = match &m.style {
-                Some(s) => {
-                    let style_indx = get_string_index(s, valid_dimensions.style.as_deref());
-                    quote!(Some(#style_indx))
-                }
-                None => quote!(None),
-            };
-            let variation = match &m.variation {
-                Some(v) => {
-                    let variation_indx = get_string_index(v, valid_dimensions.variation.as_deref());
-                    quote!(Some(#variation_indx))
-                }
-                None => quote!(None),
-            };
-            let lang = match &m.lang {
-                Some(l) => {
-                    let lang_indx = get_string_index(l, valid_dimensions.lang.as_deref());
-                    quote!(Some(#lang_indx))
-                }
-                None => quote!(None),
-            };
-            let country = match &m.country {
-                Some(c) => {
-                    let country_indx = get_string_index(c, valid_dimensions.country.as_deref());
-                    quote!(Some(#country_indx))
-                }
-                None => quote!(None),
-            };
-            let path = &m.file_path;
-
-            // In dev mode, read fresh from disk at runtime but only files existing at
-            // compile time will be seen.
-            #[cfg(feature = "dev")]
-            let markup_str_token = quote! {
-                    markup_str: ::std::borrow::Cow::Owned(
-                        ::std::fs::read_to_string(#path)
-                            .unwrap_or_else(|_| panic!("Failed to hot-reload HTML at: {}", #path))
-                    ),
-            };
-            // In prod mode, bake the file as a string into the binary.
-            #[cfg(not(feature = "dev"))]
-            let markup_str_token = quote! {
-                    markup_str: ::std::borrow::Cow::Borrowed(include_str!(#path)),
-            };
-
-            quote! {
-                #crate_root::markup::MarkupResource {
-                    style: #style,
-                    variation: #variation,
-                    lang: #lang,
-                    country: #country,
-                    #markup_str_token
-                },
+fn generate_codegen(component_name: &syn::Ident, markups: &mut [DiscoveredMarkup]) -> TokenStream {
+    let crate_root = get_crate_root("wicket-core");
+    let valid_dimensions = load_dimensions();
+    let array_elements = markups.iter().map(|m| {
+        let style = match &m.style {
+            Some(s) => {
+                let style_indx = get_string_index(s, valid_dimensions.style.as_deref());
+                quote!(Some(#style_indx))
             }
-        });
+            None => quote!(None),
+        };
+        let variation = match &m.variation {
+            Some(v) => {
+                let variation_indx = get_string_index(v, valid_dimensions.variation.as_deref());
+                quote!(Some(#variation_indx))
+            }
+            None => quote!(None),
+        };
+        let lang = match &m.lang {
+            Some(l) => {
+                let lang_indx = get_string_index(l, valid_dimensions.lang.as_deref());
+                quote!(Some(#lang_indx))
+            }
+            None => quote!(None),
+        };
+        let country = match &m.country {
+            Some(c) => {
+                let country_indx = get_string_index(c, valid_dimensions.country.as_deref());
+                quote!(Some(#country_indx))
+            }
+            None => quote!(None),
+        };
+        let path = &m.file_path;
 
-        let markup_resource_vec_name = quote::format_ident!(
-            "{}{}",
-            MARKUP_RESOURCE_ARRAY_CONST_PREFIX,
-            component_name.to_string().to_uppercase()
-        );
-        let resource_count = markups.len();
+        // In dev mode, read fresh from disk at runtime but only files existing at
+        // compile time will be seen.
+        #[cfg(feature = "dev")]
+        let markup_str_token = quote! {
+                markup_str: ::std::borrow::Cow::Owned(
+                    ::std::fs::read_to_string(#path)
+                        .unwrap_or_else(|_| panic!("Failed to hot-reload HTML at: {}", #path))
+                ),
+        };
+        // In prod mode, bake the file as a string into the binary.
+        #[cfg(not(feature = "dev"))]
+        let markup_str_token = quote! {
+                markup_str: ::std::borrow::Cow::Borrowed(include_str!(#path)),
+        };
 
+        // TODO: Use rkyv and include_bytes!() to replace the literal array creation.
         quote! {
+            #crate_root::markup::MarkupResource {
+                style: #style,
+                variation: #variation,
+                lang: #lang,
+                country: #country,
+                #markup_str_token
+            },
+        }
+    });
 
-            static #markup_resource_vec_name : [#crate_root::markup::MarkupResource; #resource_count] = [
-                        #(#array_elements)*
+    let markup_resource_vec_name = quote::format_ident!(
+        "{}{}",
+        MARKUP_RESOURCE_ARRAY_CONST_PREFIX,
+        component_name.to_string().to_uppercase()
+    );
+    let resource_count = markups.len();
 
-            ];
+    quote! {
 
-            impl #crate_root::components::MarkupLookup for #component_name {
-                fn lookup_markup(
-                    &self,
-                    style: Option<u8>,
-                    variation: Option<u8>,
-                    lang: Option<u8>,
-                    country: Option<u8>
-                ) -> Option<&#crate_root::markup::MarkupResource> {
+        static #markup_resource_vec_name : [#crate_root::markup::MarkupResource; #resource_count] = [
+                    #(#array_elements)*
 
-                    // The list is pre-sorted by specificity at compile time,
-                    // so the first match via standard iteration find() is guaranteed to be
-                    // the correct Wicket dimension fallback.
-                    #markup_resource_vec_name.iter().find(|r| {
-                        // Match style (if provided, must match; if None, must be None)
-                        if r.style != style { return false; }
-                        if r.variation != variation { return false; }
-                        if r.lang != lang { return false; }
-                        if r.country != country { return false; }
-                        true
-                    })
-                }
+        ];
+
+        impl #crate_root::components::MarkupLookup for #component_name {
+            fn lookup_markup(
+                &self,
+                style: Option<u8>,
+                variation: Option<u8>,
+                lang: Option<u8>,
+                country: Option<u8>
+            ) -> Option<&#crate_root::markup::MarkupResource> {
+
+                // The list is pre-sorted by specificity at compile time,
+                // so the first match via standard iteration find() is guaranteed to be
+                // the correct Wicket dimension fallback.
+                #markup_resource_vec_name.iter().find(|r| {
+                    // Match style (if provided, must match; if None, must be None)
+                    if r.style != style { return false; }
+                    if r.variation != variation { return false; }
+                    if r.lang != lang { return false; }
+                    if r.country != country { return false; }
+                    true
+                })
             }
         }
     }
@@ -201,20 +172,11 @@ impl MarkupCodegenStrategy for StaticSliceStrategy {
 /// component_ident - owner of the html.
 /// TokenStream output contains the implementation of the MarkupLookup trait.
 pub fn config_static_html(component_dir: &str, component_ident: &syn::Ident) -> TokenStream {
-    // Enable the matching strategy.
-    #[cfg(feature = "codegen-match")]
-    let strategy: Box<dyn MarkupCodegenStrategy> = Box::new(MatchStrategy);
-    #[cfg(all(feature = "codegen-static-slice", not(feature = "codegen-match")))]
-    let strategy: Box<dyn MarkupCodegenStrategy> = Box::new(StaticSliceStrategy);
-    // TODO: create a hashing strategy.
-    // TODO: Use rkyv and include_bytes!() to replace the literal array creation.
-
     // Discover the HTML files in the file system
     let mut discovered_markups =
         discover_files(component_ident.to_string().as_mut_str(), component_dir);
 
-    // Generate the strategy-specific code
-    let generated_codegen = strategy.generate_codegen(component_ident, &mut discovered_markups);
+    let generated_codegen = generate_codegen(component_ident, &mut discovered_markups);
 
     quote! {
         #generated_codegen

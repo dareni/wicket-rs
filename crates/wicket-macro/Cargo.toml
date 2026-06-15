@@ -17,7 +17,8 @@ wicket-macro-support = { path = "../wicket-macro-support/"}
 proc-macro-crate = "3.5.0"
 
 [features]
-default = ["dev", "codegen-static-slice"]
+default = []
+
+# Enable loading of html source files from disk on each access versus
+# the file baked into the binary.
 dev = []
-codegen-match= []
-codegen-static-slice = []
