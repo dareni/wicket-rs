@@ -102,17 +102,18 @@ fn generate_codegen(component_name: &syn::Ident, markups: &mut [DiscoveredMarkup
 
         // In dev mode, read fresh from disk at runtime but only files existing at
         // compile time will be seen.
-        #[cfg(feature = "dev")]
-        let markup_str_token = quote! {
-                markup_str: ::std::borrow::Cow::Owned(
-                    ::std::fs::read_to_string(#path)
-                        .unwrap_or_else(|_| panic!("Failed to hot-reload HTML at: {}", #path))
-                ),
-        };
-        // In prod mode, bake the file as a string into the binary.
-        #[cfg(not(feature = "dev"))]
-        let markup_str_token = quote! {
-                markup_str: ::std::borrow::Cow::Borrowed(include_str!(#path)),
+        let markup_str_token = if cfg!(feature = "dev") {
+            quote! {
+                    markup_str: ::std::borrow::Cow::Owned(
+                        ::std::fs::read_to_string(#path)
+                            .unwrap_or_else(|_| panic!("Failed to hot-reload HTML at: {}", #path))
+                    ),
+            }
+        } else {
+            // In prod mode, bake the file as a string into the binary.
+            quote! {
+                    markup_str: ::std::borrow::Cow::Borrowed(include_str!(#path)),
+            }
         };
 
         // TODO: Use rkyv and include_bytes!() to replace the literal array creation.
@@ -244,7 +245,7 @@ pub fn discover_files(component_dir: &str, component_name: &str) -> Vec<Discover
                 // Strict ISO 3166-1 alpha-2 country code check (e.g., "CA", "US")
                 country = Some(segment.to_string());
             } else {
-                // Crucial Rust Feature: Compile-time panic on invalid user files!
+                // Compile-time panic on invalid user files!
                 panic!(
                     "Invalid Wicket markup file found: '{}'. The segment '{}' does not match any valid style, variation, language, or country rule.",
                     file_name, segment
