@@ -12,10 +12,10 @@ wicket-macro-support= { version = "0.1.0", path = "crates/wicket-macro-support",
 wicket-request= { version = "0.1.0", path = "crates/wicket-request", default-features = false }
 wicket-util= { version = "0.1.0", path = "crates/wicket-util", default-features = false }
 
-[package.metadata.rust-analyzer.cargo]
+[workspace.metadata.rust-analyzer.cargo]
 allTargets = true
 allFeatures = false
 features = []
 
-[package.metadata.rust-analyzer.cargo.cfgs]
+[workspace.metadata.rust-analyzer.cargo.cfgs]
 test = true
