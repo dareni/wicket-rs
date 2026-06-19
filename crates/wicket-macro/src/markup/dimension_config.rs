@@ -14,6 +14,7 @@ use std::fs;
 use std::path::PathBuf;
 
 #[derive(Deserialize, Default)]
+// Note: country codes are strict ISO 3166-1 AU,GB,US
 pub struct TomlDimensions {
     pub style: Option<Vec<String>>,
     pub variation: Option<Vec<String>>,

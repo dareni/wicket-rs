@@ -39,6 +39,10 @@ pub trait MarkupContainer: MarkupIdentifier + MarkupResourceLocationUtil + Marku
     ) -> std::io::Result<RedirectAction>;
 }
 
+/// Obtain the html file for the given dimensions.
+/// TODO: lookup_markup is macro generated mixing the access of the static file strings
+/// with the dimension match logic. Put the dimension match logic here as a default
+/// method and create a new function exposing the static file data.
 pub trait MarkupLookup {
     fn lookup_markup(
         &self,
@@ -47,7 +51,6 @@ pub trait MarkupLookup {
         lang: Option<u8>,
         country: Option<u8>,
     ) -> Option<&MarkupResource>;
-    // ) -> ::std::borrow::Cow<'static, str>;
 }
 
 #[derive(Default)]

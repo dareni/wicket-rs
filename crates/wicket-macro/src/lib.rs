@@ -1,5 +1,7 @@
 mod markup;
 
+use std::path::PathBuf;
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Ident, LitStr, parse_macro_input};
@@ -57,22 +59,33 @@ pub fn wicket_markup_container(attribs: TokenStream, item: TokenStream) -> Token
     let item_input = parse_macro_input!(item as DeriveInput);
     let name = &item_input.ident;
     let comp_dir_attrib = parse_macro_input!(attribs as LitStr);
-    let component_dir: String = comp_dir_attrib.value();
 
-    config_static_html(&component_dir, name).into()
+    let path = std::env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
+    let relative_component_dir: String = comp_dir_attrib.value();
+    let mut component_dir = PathBuf::from(path);
+    component_dir.push(relative_component_dir);
+
+    config_static_html(component_dir, name).into()
 }
 
 const PAGE_ID_CONST_PREFIX: &str = "WICKETPAGEID_";
 
 /// Note: the target struct must implement FromPageParameters.
+/// The only way to obtain the component html path at compile time is via a static macro argument.
 #[proc_macro_attribute]
 pub fn wicket_page(attribs: TokenStream, item: TokenStream) -> TokenStream {
     let comp_dir_attrib = parse_macro_input!(attribs as LitStr);
-    let component_dir: String = comp_dir_attrib.value();
+    let relative_component_dir: String = comp_dir_attrib.value();
 
     let item_input = parse_macro_input!(item as DeriveInput);
     let name = &item_input.ident;
-    let html_data = config_static_html(&component_dir, name);
+
+    let path = std::env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
+
+    let mut component_dir = PathBuf::from(path);
+    component_dir.push(relative_component_dir);
+
+    let html_data = config_static_html(component_dir, name);
 
     let const_name = quote::format_ident!(
         "{}{}",
