@@ -65,7 +65,7 @@ pub mod test {
         let markup_resource = page.lookup_markup(None, None, None, None);
         assert!(markup_resource.is_some());
         let markup_resource = markup_resource.unwrap();
-        let html = &markup_resource.markup_str;
+        let html = &markup_resource.markup.source;
         assert!(
             html.trim_end() == "<html></html>",
             "Because: '<html></html>' != '{}'",

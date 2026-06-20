@@ -31,16 +31,14 @@ pub const WICKET_XHTML_DTD: &str = "http://wicket.apache.org/dtds.data/wicket-xh
 
 pub struct Markup {
     pub elements: Vec<MarkupElement>,
-    pub source: Arc<str>,
-    pub markup_resource_stream: MarkupResourceStream,
+    pub source: Cow<'static, str>,
 }
 
 impl Default for Markup {
     fn default() -> Self {
         Self {
             elements: vec![],
-            source: Arc::from("".to_string().into_boxed_str()),
-            markup_resource_stream: MarkupResourceStream { variation: None },
+            source: Cow::Owned("".to_string()),
         }
     }
 }
@@ -147,13 +145,14 @@ impl MarkupFactory {
 }
 
 /// style, variation, lang, country index to ValidHtmlDimensions
-#[derive(Clone, Debug)]
+/// In Apache Wicket, HTML files are resolved using the ResourceStreamLocator class,
+/// which combines the component's variation, the session's style, and the thread's locale.
 pub struct MarkupResource {
     pub style: Option<u8>,
     pub variation: Option<u8>,
     pub lang: Option<u8>,
     pub country: Option<u8>,
-    pub markup_str: Cow<'static, str>,
+    pub markup: Markup,
 }
 
 pub trait ResourceStream {

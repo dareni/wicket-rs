@@ -104,9 +104,9 @@ fn generate_codegen(component_name: &syn::Ident, markups: &mut [DiscoveredMarkup
 
         // In dev mode, read fresh from disk at runtime but only files existing at
         // compile time will be seen.
-        let markup_str_token = if cfg!(feature = "dev") {
+        let markup_src_token = if cfg!(feature = "dev") {
             quote! {
-                    markup_str: ::std::borrow::Cow::Owned(
+                    source: ::std::borrow::Cow::Owned(
                         ::std::fs::read_to_string(#path)
                             .unwrap_or_else(|_| panic!("Failed to hot-reload HTML at: {}", #path))
                     ),
@@ -114,7 +114,7 @@ fn generate_codegen(component_name: &syn::Ident, markups: &mut [DiscoveredMarkup
         } else {
             // In prod mode, bake the file as a string into the binary.
             quote! {
-                    markup_str: ::std::borrow::Cow::Borrowed(include_str!(#path)),
+                    source: ::std::borrow::Cow::Borrowed(include_str!(#path)),
             }
         };
 
@@ -125,7 +125,7 @@ fn generate_codegen(component_name: &syn::Ident, markups: &mut [DiscoveredMarkup
                 variation: #variation,
                 lang: #lang,
                 country: #country,
-                #markup_str_token
+                markup: #crate_root::markup::Markup {#markup_src_token ..::std::default::Default::default()}
             },
         }
     });

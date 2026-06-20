@@ -43,6 +43,8 @@ pub trait MarkupContainer: MarkupIdentifier + MarkupResourceLocationUtil + Marku
 /// TODO: lookup_markup is macro generated mixing the access of the static file strings
 /// with the dimension match logic. Put the dimension match logic here as a default
 /// method and create a new function exposing the static file data.
+/// TODO integrate MarkupLookup with FileResourceStreamLocator and implement compile time embedded
+/// assets.
 pub trait MarkupLookup {
     fn lookup_markup(
         &self,
