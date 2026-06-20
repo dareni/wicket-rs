@@ -152,7 +152,7 @@ pub struct MarkupResource {
     pub variation: Option<u8>,
     pub lang: Option<u8>,
     pub country: Option<u8>,
-    pub markup: Markup,
+    pub markup: LazyLock<Markup>,
 }
 
 pub trait ResourceStream {

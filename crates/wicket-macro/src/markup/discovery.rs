@@ -125,7 +125,7 @@ fn generate_codegen(component_name: &syn::Ident, markups: &mut [DiscoveredMarkup
                 variation: #variation,
                 lang: #lang,
                 country: #country,
-                markup: #crate_root::markup::Markup {#markup_src_token ..::std::default::Default::default()}
+                markup: ::std::sync::LazyLock::new(||#crate_root::markup::Markup {#markup_src_token ..::std::default::Default::default()})
             },
         }
     });
