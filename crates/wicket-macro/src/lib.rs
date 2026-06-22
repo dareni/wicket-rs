@@ -72,6 +72,17 @@ const PAGE_ID_CONST_PREFIX: &str = "WICKETPAGEID_";
 
 /// Note: the target struct must implement FromPageParameters.
 /// The only way to obtain the component html path at compile time is via a static macro argument.
+///
+/// example:
+///
+/// #[wicket_page("tests/resources/html/account")]
+/// struct AccountMainPageTest{}
+///
+/// or:
+///
+/// #[wicket_page("src/account")]
+/// struct AccountMainPage{}
+///
 #[proc_macro_attribute]
 pub fn wicket_page(attribs: TokenStream, item: TokenStream) -> TokenStream {
     let comp_dir_attrib = parse_macro_input!(attribs as LitStr);

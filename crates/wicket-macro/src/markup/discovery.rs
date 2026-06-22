@@ -102,31 +102,17 @@ fn generate_codegen(component_name: &syn::Ident, markups: &mut [DiscoveredMarkup
         };
         let path = &m.file_path;
 
-        // In dev mode, read fresh from disk at runtime but only files existing at
-        // compile time will be seen.
-        let markup_src_token = if cfg!(feature = "dev") {
-            quote! {
-                    source: ::std::borrow::Cow::Owned(
-                        ::std::fs::read_to_string(#path)
-                            .unwrap_or_else(|_| panic!("Failed to hot-reload HTML at: {}", #path))
-                    ),
-            }
-        } else {
-            // In prod mode, bake the file as a string into the binary.
-            quote! {
-                    source: ::std::borrow::Cow::Borrowed(include_str!(#path)),
-            }
-        };
-
         // TODO: Use rkyv and include_bytes!() to replace the literal array creation.
+        // TODO: Store the file strings outside the MarkupResource declaration.
         quote! {
             #crate_root::markup::MarkupResource {
                 style: #style,
                 variation: #variation,
                 lang: #lang,
                 country: #country,
-                markup: ::std::sync::LazyLock::new(||#crate_root::markup::Markup {#markup_src_token ..::std::default::Default::default()})
+                markup: #crate_root::markup::Markup::new_source(include_str!(#path)),
             },
+
         }
     });
 

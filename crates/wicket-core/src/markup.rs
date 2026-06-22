@@ -8,7 +8,7 @@ use std::borrow::Cow;
 use std::fs::File;
 use std::io;
 use std::io::Read;
-use std::sync::Arc;
+use std::sync::OnceLock;
 
 use once_cell::sync::Lazy;
 
@@ -19,6 +19,7 @@ use crate::components::ComponentId;
 use crate::components::MarkupContainer;
 use crate::markup::loader::{DefaultMarkupResourceStreamProvider, MarkupResourceStreamProvider};
 use crate::markup::markup_element::MarkupElement;
+use crate::markup::markup_parser::MarkupParser;
 use crate::request::Response;
 
 static_pattern!(
@@ -30,15 +31,15 @@ static_pattern!(DOCTYPE_REGEX, r"!DOCTYPE\s+(.*)\s*");
 pub const WICKET_XHTML_DTD: &str = "http://wicket.apache.org/dtds.data/wicket-xhtml1.4-strict.dtd";
 
 pub struct Markup {
-    pub elements: Vec<MarkupElement>,
-    pub source: Cow<'static, str>,
+    elements: OnceLock<Vec<MarkupElement>>,
+    pub source: &'static str,
 }
 
 impl Default for Markup {
     fn default() -> Self {
         Self {
-            elements: vec![],
-            source: Cow::Owned("".to_string()),
+            elements: OnceLock::new(),
+            source: "",
         }
     }
 }
@@ -48,10 +49,32 @@ impl Markup {
         Self::default()
     }
 
+    pub const fn new_source(source: &'static str) -> Self {
+        Self {
+            elements: OnceLock::new(),
+            source,
+        }
+    }
+
+    pub fn get_elements(&self) -> &Vec<MarkupElement> {
+        // TODO: Add parameters for dimensions and MarkupContainer strings for parse error
+        // message context.
+        // TODO: Long term move the parse to the proc macro for compile time processing.
+        self.elements.get_or_init(|| {
+            //TODO: Refactor MarkupParser::new to take a static string reference.
+            let mut parser = MarkupParser::new(self.source.to_string());
+            let result = parser.parse_markup();
+            match result {
+                Ok(v) => v,
+                Err(e) => panic!("Error: could not parse markup, error: {}", e),
+            }
+        })
+    }
+
     // Pulled on WebPage creation to build a map of wicket MarkupElements and
     // their Component counterparts.
     pub fn get_component_tags(&self) -> Vec<u16> {
-        self.elements
+        self.get_elements()
             .iter()
             .filter_map(|me| match me {
                 MarkupElement::ComponentTag(ct) => Some(ct.tag_id),
@@ -67,7 +90,7 @@ impl Markup {
         response: &mut Response,
         markup_container: &T,
     ) -> io::Result<()> {
-        for element in &self.elements {
+        for element in self.get_elements() {
             match element {
                 // The "Super-Slice" Win: High-speed block copy
                 MarkupElement::RawMarkup(raw) => {
@@ -122,14 +145,14 @@ pub struct MarkupStream<'a> {
 
 impl<'a> MarkupStream<'a> {
     pub fn next_element(&mut self) -> Option<&MarkupElement> {
-        let el = self.markup.elements.get(self.current_index);
+        let el = self.markup.get_elements().get(self.current_index);
         self.current_index += 1;
         el
     }
 
     pub fn is_current_tag(&self) -> bool {
         matches!(
-            self.markup.elements.get(self.current_index),
+            self.markup.get_elements().get(self.current_index),
             Some(MarkupElement::ComponentTag(_))
         )
     }
@@ -152,7 +175,7 @@ pub struct MarkupResource {
     pub variation: Option<u8>,
     pub lang: Option<u8>,
     pub country: Option<u8>,
-    pub markup: LazyLock<Markup>,
+    pub markup: Markup,
 }
 
 pub trait ResourceStream {
