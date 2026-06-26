@@ -624,8 +624,8 @@ impl XmlPullParser {
         let mut pairs = Vec::new();
         let bytes = content[content_position.clone()].as_bytes();
         let mut cursor = 0;
-        let mut finding_open_quote = false;
-        let mut finding_close_quote = false;
+        let mut finding_attrib_val_start = false;
+        let mut finding_attrib_val_end = false;
 
         while cursor < bytes.len() {
             // 1. Skip whitespace to find the start of a key
@@ -653,27 +653,31 @@ impl XmlPullParser {
 
             if cursor < bytes.len() && bytes[cursor] == b'=' {
                 cursor += 1; // skip '='
-                finding_close_quote = true;
-                finding_open_quote = true;
+                finding_attrib_val_end = true;
+                finding_attrib_val_start = true;
 
                 // 4. Skip whitespace after '='
                 while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
                     cursor += 1;
                 }
 
+                static VALUE_DELIMITER: [u8; 6] = [b' ', b'>', b'/', b'\t', b'\n', b'\r'];
+
                 // 5. Handle Quotes
-                if cursor < bytes.len() && (bytes[cursor] == b'"' || bytes[cursor] == b'\'') {
-                    let quote = bytes[cursor];
-                    finding_open_quote = false;
-                    cursor += 1; // skip opening quote
+                if cursor < bytes.len() {
+                    let mut val_delimiter: &[u8] = &VALUE_DELIMITER;
+                    if bytes[cursor] == b'"' || bytes[cursor] == b'\'' {
+                        val_delimiter = &bytes[cursor..=cursor];
+                        cursor += 1; // skip opening quote
+                    }
+                    finding_attrib_val_start = false;
                     let val_start = cursor;
 
-                    while cursor < bytes.len() && bytes[cursor] != quote {
+                    // while cursor < bytes.len() && bytes[cursor] != val_delimiter {
+                    while cursor < bytes.len() && !val_delimiter.contains(&bytes[cursor]) {
                         cursor += 1;
                     }
-                    if bytes[cursor] == quote {
-                        finding_close_quote = false;
-                    }
+                    finding_attrib_val_end = false;
 
                     let value_range = val_start..cursor;
                     if has_surrounding_whitespace(&bytes[value_range.clone()]) {
@@ -689,7 +693,7 @@ impl XmlPullParser {
                     }
                     if cursor < bytes.len() {
                         cursor += 1;
-                    } // skip closing quote
+                    } // skip closing delimiter
 
                     pairs.push(AttributeRange {
                         key_range,
@@ -704,7 +708,7 @@ impl XmlPullParser {
                 });
             }
 
-            if finding_open_quote || finding_close_quote {
+            if finding_attrib_val_start || finding_attrib_val_end {
                 let position = content_position.start + cursor;
                 let (line, column) = FullyBufferedReader::count_lines_in_str(&content[0..position]);
                 return Err(ParseException::AttributeValueUnquotedParseError {
@@ -1029,15 +1033,10 @@ mod test {
         assert_eq!("1234", tag.get_attribute_value("attr").unwrap());
 
         parser = XmlPullParser::new("<tag attr=1234>".to_owned());
-        let error = parser.next_tag().unwrap_err();
-        assert!(matches!(
-            error,
-            ParseException::AttributeValueUnquotedParseError {
-                line: 0,
-                column: 10,
-                position: 10,
-            },
-        ));
+        tag = parser.next_tag().unwrap().unwrap();
+        assert_eq!(1, tag.get_attributes().len());
+        assert!(tag.contains_attribute_key("attr"));
+        assert_eq!("1234", tag.get_attribute_value("attr").unwrap());
 
         parser = XmlPullParser::new("<tag checkbox >".to_owned());
         tag = parser.next_tag().unwrap().unwrap();
@@ -1230,5 +1229,36 @@ mod test {
 
         tag_type = parser.next_iteration().unwrap();
         assert!(matches!(tag_type, HttpTagType::ConditionalCommentEndif));
+    }
+
+    #[test]
+    pub fn find_attrib_pairs_test() {
+        let attribs = XmlPullParser::find_attribute_pairs(" enable ", 0..8).unwrap();
+        assert!(attribs.len() == 1);
+        assert!(attribs[0].key_range == (1..7));
+        assert!(attribs[0].value_range.is_empty());
+
+        let attribs =
+            XmlPullParser::find_attribute_pairs(" enable='true' visible='true' ", 0..30).unwrap();
+        assert!(attribs.len() == 2);
+        assert!(attribs[0].key_range == (1..7));
+        assert!(attribs[0].value_range == (9..13));
+        assert!(attribs[1].key_range == (15..22));
+        assert!(attribs[1].value_range == (24..28));
+
+        let attribs =
+            XmlPullParser::find_attribute_pairs(" enable = 'true'  visible = 'true'  ", 0..34)
+                .unwrap();
+        assert!(attribs.len() == 2);
+        assert!(attribs[0].key_range == (1..7));
+        assert!(attribs[0].value_range == (11..15));
+        assert!(attribs[1].key_range == (18..25));
+        assert!(attribs[1].value_range == (29..33));
+
+        let attribs =
+            XmlPullParser::find_attribute_pairs(" enable =  true   visible = 'true'  ", 0..34)
+                .unwrap();
+        assert!(attribs[0].key_range == (1..7));
+        assert!(attribs[0].value_range == (11..15));
     }
 }
