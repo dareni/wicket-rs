@@ -145,17 +145,17 @@ impl ComponentTag {
 
     /// True if autolink is enabled and the tag contains a href attrib.
     pub fn is_autolink_enabled(&self) -> bool {
-        (self.flags & ComponentTagFlags::AUTOLINK).is_empty()
+        self.flags.contains(ComponentTagFlags::AUTOLINK)
     }
 
     /// Helper to access the Wicket ID easily
-    pub fn id_attr(&self) -> Option<&AttrValue> {
+    pub fn wicket_id_attr(&self) -> Option<&AttrValue> {
         self.wicket.as_ref().and_then(|w| w.id.as_ref())
     }
 
     /// Get the component id.
-    pub fn id_str(&self) -> Option<&str> {
-        match &self.id_attr() {
+    pub fn wicket_id_str(&self) -> Option<&str> {
+        match &self.wicket_id_attr() {
             Some(value) => Some(value.to_str(self.tag.source())),
             None => None,
         }
@@ -200,7 +200,7 @@ impl ComponentTag {
     /// Each clone my be modified per request.
     pub fn shadow_copy(&self) -> Self {
         //TODO:
-        ComponentTag::default()
+        unimplemented!()
     }
 
     /// Return the underlying xml tag.
@@ -220,7 +220,7 @@ impl ComponentTag {
 
     /// True if the ComponentTag as been marked as modified.
     pub fn is_modified(&self) -> bool {
-        (self.flags & ComponentTagFlags::MODIFIED).is_empty()
+        self.flags.contains(ComponentTagFlags::MODIFIED)
     }
 
     /// Set true when the HTML tag (e.g. br) has no close tag.
@@ -234,7 +234,7 @@ impl ComponentTag {
 
     /// True when the HTML tag (e.g. br) has no close tag.
     pub fn is_has_no_close_tag(&self) -> bool {
-        (self.flags & ComponentTagFlags::NO_CLOSE_TAG).is_empty()
+        self.flags.contains(ComponentTagFlags::NO_CLOSE_TAG)
     }
 
     /// Sets the flag to indicate if the current tag contains a child or a descendant with the
@@ -249,7 +249,7 @@ impl ComponentTag {
 
     /// True when the current tag contains a child or a descendant with the "wicket::id" attribute.
     pub fn is_contains_wicket_id(&self) -> bool {
-        (self.flags & ComponentTagFlags::CONTAINS_WICKET_ID).is_empty()
+        self.flags.contains(ComponentTagFlags::CONTAINS_WICKET_ID)
     }
 
     pub fn eq_to(&self, element: &MarkupElement) -> bool {
@@ -261,7 +261,7 @@ impl ComponentTag {
 
     /// If true the MarkupParser will exclude it from the markup.
     pub fn is_ignore(&self) -> bool {
-        (self.flags & ComponentTagFlags::IGNORE).is_empty()
+        self.flags.contains(ComponentTagFlags::IGNORE)
     }
 
     /// If true the MarkupParser will exclude it from the markup.
@@ -275,7 +275,7 @@ impl ComponentTag {
 
     /// True if wicket:id is automatically created (internal component).
     pub fn is_auto_component_tag(&self) -> bool {
-        (self.flags & ComponentTagFlags::AUTO_COMPONENT).is_empty()
+        self.flags.contains(ComponentTagFlags::AUTO_COMPONENT)
     }
 
     /// True if wicket:id is automatically created (internal component).
@@ -300,5 +300,27 @@ impl ComponentTag {
             .get_or_insert_with(|| HashMap::with_capacity(1));
 
         attrs.insert(key.to_owned(), value.to_owned());
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::Arc;
+
+    use crate::markup::{
+        markup_element::{ComponentTag, ComponentTagFlags},
+        parser::xml_tag::{TagType, XmlTag},
+    };
+
+    #[test]
+    pub fn test_component_tag() {
+        let source: Arc<str> = Arc::from("");
+        let xml_tag = XmlTag::with_text(source, 0..0, TagType::OpenClose);
+        let mut ct = ComponentTag::from_xml_tag(xml_tag);
+        assert!(ct.flags == ComponentTagFlags::NONE);
+        assert!(!ct.is_modified());
+        assert!(!ct.flags.contains(ComponentTagFlags::MODIFIED));
+        ct.set_modified(true);
+        assert!(ct.is_modified());
     }
 }
