@@ -134,7 +134,7 @@ pub struct XmlTag {
     /// The entire xml source containing this tag.
     source: Arc<str>,
     /// The range of the entire tag: e.g., `<wicket:label id="test">`.
-    /// TODO: change the range from usize to u32.
+    /// TODO: change the range from usize to u16.
     pub text_range: Range<usize>, //
     /// Also contains the index to the open/close relative.
     tag_type: TagType,
@@ -146,45 +146,21 @@ pub struct XmlTag {
     /// render entirely from the source when the tag is unmodified.
     modified: bool,
 }
-impl Default for XmlTag {
-    fn default() -> Self {
-        Self {
-            source: Arc::default(),
-            text_range: Range::default(),
-            tag_type: TagType::Open {
-                closer_index: Some(0),
-            },
-            name_range: XmlString::Raw(Range::default()),
-            namespace_range: None,
-            attributes: SmallVec::new(),
-            modified: false,
-        }
-    }
-}
 
 impl XmlTag {
-    /// Empty tag – mutable by default.
-    pub fn new() -> Self {
-        Self {
-            ..Default::default()
-        }
-    }
-
-    pub fn new_from(name_range: Range<usize>, tag_type: &TagType) -> Self {
-        Self {
-            name_range: XmlString::Raw(name_range),
-            tag_type: tag_type.to_owned(),
-            ..Default::default()
-        }
-    }
-
-    /// Tag with a `TextSegment` and a `TagType`.
+    /// Create a new tag instance.
+    /// Stores a reference to the orignal html `source` string, the `text_range` of the tag
+    /// and the tag type. `text_range is the exact slice of the tag for
+    /// example: `<div id=123 visible=true>`.
     pub fn with_text(source: Arc<str>, text_range: Range<usize>, tag_type: TagType) -> Self {
         Self {
             source,
             text_range,
             tag_type,
-            ..Default::default()
+            name_range: XmlString::Raw(Range::default()),
+            namespace_range: None,
+            attributes: SmallVec::new(),
+            modified: false,
         }
     }
     pub fn set_modified(&mut self) {
@@ -337,8 +313,11 @@ impl XmlTag {
     // -------------------------------------------------------------------------
     //  Open/close linking
     // -------------------------------------------------------------------------
-    pub fn set_open_tag(&mut self, opener_index: Option<usize>) {
+    pub fn set_close_tag(&mut self, opener_index: Option<usize>) {
         self.tag_type = TagType::Close { opener_index };
+    }
+    pub fn set_open_tag(&mut self, closer_index: Option<usize>) {
+        self.tag_type = TagType::Open { closer_index };
     }
 
     pub fn get_open_tag<'a>(
@@ -488,6 +467,7 @@ impl fmt::Debug for XmlTag {
             .field("namespace", &self.namespace())
             .field("type", &self.tag_type)
             .field("attributes", &self.attributes)
+            .field("text_range", &self.text_range)
             .finish()
     }
 }

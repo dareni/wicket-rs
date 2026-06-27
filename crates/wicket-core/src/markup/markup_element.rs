@@ -85,33 +85,17 @@ pub struct ComponentTag {
     pub tag_id: u16,
 }
 
-impl Default for ComponentTag {
-    fn default() -> Self {
-        Self {
+impl ComponentTag {
+    /// Crate a new instance wrapping `xml_tag`.
+    pub fn from_xml_tag(xml_tag: XmlTag) -> Self {
+        ComponentTag {
             open_tag: Option::None,
-            tag: XmlTag::new(),
+            tag: xml_tag,
             flags: ComponentTagFlags::NONE,
             wicket: None,
             behaviors: Option::None,
             user_data: Option::None,
             tag_id: 0,
-        }
-    }
-}
-
-impl ComponentTag {
-    pub fn new(name_range: Range<usize>, tag_type: &TagType) -> Self {
-        let tag = XmlTag::new_from(name_range, tag_type);
-        ComponentTag {
-            tag,
-            ..Default::default()
-        }
-    }
-
-    pub fn from_xml_tag(xml_tag: XmlTag) -> Self {
-        ComponentTag {
-            tag: xml_tag,
-            ..Default::default()
         }
     }
 

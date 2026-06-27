@@ -474,6 +474,7 @@ impl XmlPullParser {
         self.last_tag.take()
     }
 
+    /// The string of the last tag eg '<div>'.
     pub fn get_string(&self) -> &str {
         &self.input.get_input()[self.last_text_range.clone()]
     }
@@ -527,7 +528,8 @@ impl XmlPullParser {
         self.input.set_position_marker(pos);
     }
 
-    pub fn to_string(&self) -> &str {
+    /// The source string.
+    pub fn source(&self) -> &str {
         self.input.to_string()
     }
 
@@ -586,6 +588,7 @@ impl XmlPullParser {
         let _cap_opt = XML_ENCODING.get_regex().captures(xml_head);
     }
 
+    /// Return (tag_name_range, tag_namespace_range)
     fn parse_tag_name(&self, tag_inner: Range<usize>) -> (Range<usize>, Option<Range<usize>>) {
         let content = &self.input.get_input()[tag_inner.clone()];
 
