@@ -237,6 +237,18 @@ impl XmlTag {
         None
     }
 
+    pub fn get_attribute_int_value(&self, key: &str) -> Option<i32> {
+        let str_value = self.get_attribute_value(key);
+        str_value.map(|v| {
+            v.parse::<i32>().unwrap_or_else(|e| {
+                panic!(
+                    "Error: {}, Failed to retrieve integer attribute value '{}' for tag {:?}",
+                    e, key, &self
+                )
+            })
+        })
+    }
+
     /// Get the value in the form of AttrValue
     pub fn get_attribute_attrvalue(&self, key: &str) -> Option<AttrValue> {
         for xml_attribute in &self.attributes {

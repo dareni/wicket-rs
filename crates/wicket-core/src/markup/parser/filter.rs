@@ -34,6 +34,24 @@ impl MarkupFilter for HtmlHandler {
     }
 }
 
+/// from org.apache.wicket.markup.parser.filter.WicketTagIdentifier
+const WELL_KNOWN_TAG_NAMES: [&str; 14] = [
+    "border",
+    "body",
+    "label",
+    "panel",
+    "enclosure",
+    "link",
+    "remove",
+    "fragment",
+    "head",
+    "header-items",
+    "child",
+    "extend",
+    "container",
+    "message",
+];
+
 pub enum FilterResult {
     /// Keep this element and pass it to the next filter
     Keep(Box<MarkupElement>),
@@ -50,6 +68,20 @@ impl MarkupFilter for WicketTagIdentifier {
     fn process(&mut self, mut element: MarkupElement) -> Result<FilterResult, WicketException> {
         if let MarkupElement::ComponentTag(ref mut ct) = element {
             let wicket_id = ct.tag.get_attribute_attrvalue(WICKET_ID);
+
+            if let Some(id) = &wicket_id {
+                if id.to_str(ct.tag.source()).is_empty() {
+                    let position = ct.tag.text_range.start;
+                    let (line, column) =
+                        FullyBufferedReader::count_lines_in_str(&ct.tag.source()[0..position]);
+
+                    return Err(WicketException::EmptyWicketId {
+                        line,
+                        column,
+                        position,
+                    });
+                }
+            }
 
             if ct
                 .tag
@@ -78,22 +110,9 @@ impl MarkupFilter for WicketTagIdentifier {
                         position,
                     });
                 }
-            }
-
-            if wicket_id.is_some() {
-                if ct.id_str().is_none_or(|x| x.is_empty()) {
-                    let position = ct.tag.text_range.start;
-                    let (line, column) =
-                        FullyBufferedReader::count_lines_in_str(&ct.tag.source()[0..position]);
-
-                    return Err(WicketException::EmptyWicketId {
-                        line,
-                        column,
-                        position,
-                    });
-                }
+            } else if wicket_id.is_some() {
                 let wicket_tag = ct.enable_wicket();
-                wicket_tag.id = wicket_id;
+                wicket_tag.id = wicket_id.clone();
             }
         }
         Ok(FilterResult::Keep(Box::new(element)))
@@ -101,8 +120,8 @@ impl MarkupFilter for WicketTagIdentifier {
 }
 
 impl WicketTagIdentifier {
-    pub fn is_well_known(&self, _tag: &ComponentTag) -> bool {
-        unimplemented!();
+    pub fn is_well_known(&self, tag: &ComponentTag) -> bool {
+        WELL_KNOWN_TAG_NAMES.contains(&tag.tag.name().to_lowercase().as_str())
     }
     pub fn is_raw(&self, _tag: &ComponentTag) -> bool {
         unimplemented!();

@@ -1,12 +1,15 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops::Range;
+use std::sync::atomic::AtomicUsize;
 
 use bitflags::bitflags;
 
 use crate::markup::parser::filter::HtmlHandler;
-use crate::markup::parser::xml_tag::{AttrValue, TagType, XmlTag};
+use crate::markup::parser::xml_tag::{AttrValue, XmlTag};
 use crate::request::Response;
+
+static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,8 +54,12 @@ pub struct SpecialTag {
 }
 
 impl MarkupElement {
+    // TODO: Replace this temporary logic  using java logic from
+    // AbstractMarkupFilter.getRequestUniqueId() for wicket id
+    // generation.
     pub fn get_request_unique_id() -> String {
-        unimplemented!();
+        let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        id.to_string()
     }
 }
 

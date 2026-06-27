@@ -74,7 +74,6 @@ impl DefaultMarkupResourceStreamProvider {
     }
 
     pub fn new_default() -> DefaultMarkupResourceStreamProvider {
-        println!("root::{}", get_resource_path().clone().to_str().unwrap());
         let locator = FileResourceStreamLocator::new(vec![get_resource_path().clone()]);
         Self {
             locator: Box::from(locator),
